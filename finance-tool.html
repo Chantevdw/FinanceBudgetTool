@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Our Money — Budget Tool</title>
+<style>
+  :root{
+    --bg:#eef1f4; --surface:#ffffff; --surface-2:#f4f6f9; --ink:#182029; --ink-soft:#4a5563;
+    --ink-faint:#7a8694; --line:#e0e5ea; --line-strong:#cdd4dc;
+    --accent:#1f7a68; --accent-soft:#e4f1ee; --accent-ink:#155e50;
+    --in:#1f8a5b; --in-soft:#e2f1ea; --out:#b8503f; --out-soft:#f7e7e3;
+    --warn:#b07d1c;
+    --radius:12px; --shadow:0 1px 2px rgba(24,32,41,.05),0 8px 26px rgba(24,32,41,.06);
+    --cat0:#1f7a68;--cat1:#3b6ea5;--cat2:#b07d1c;--cat3:#8a5cb8;--cat4:#c05a8d;
+    --cat5:#4a9d8e;--cat6:#c07a3e;--cat7:#5b8a3a;--cat8:#a34e4e;--cat9:#5f6b7a;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f141a; --surface:#171d25; --surface-2:#1c232c; --ink:#e6ebf0; --ink-soft:#aeb8c4;
+      --ink-faint:#78838f; --line:#28313b; --line-strong:#3a4552;
+      --accent:#4fc0a8; --accent-soft:#132a26; --accent-ink:#6fd0ba;
+      --in:#5cbd8a; --in-soft:#13291f; --out:#e08874; --out-soft:#2c1a16;
+      --warn:#d8a24a;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+      --bg:#0f141a; --surface:#171d25; --surface-2:#1c232c; --ink:#e6ebf0; --ink-soft:#aeb8c4;
+      --ink-faint:#78838f; --line:#28313b; --line-strong:#3a4552;
+      --accent:#4fc0a8; --accent-soft:#132a26; --accent-ink:#6fd0ba;
+      --in:#5cbd8a; --in-soft:#13291f; --out:#e08874; --out-soft:#2c1a16;
+      --warn:#d8a24a;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:ui-sans-serif,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+    font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  .mono,.amt{font-family:ui-monospace,"Cascadia Code",Consolas,Menlo,monospace;font-variant-numeric:tabular-nums}
+  h1,h2,h3{margin:0;letter-spacing:-.01em}
+  button{font-family:inherit;font-size:14px;cursor:pointer;border-radius:8px;border:1px solid var(--line-strong);
+    background:var(--surface);color:var(--ink);padding:8px 14px;transition:background .12s,border-color .12s}
+  button:hover{background:var(--surface-2)}
+  button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  button.primary:hover{filter:brightness(1.06)}
+  button.ghost{border-color:transparent;background:transparent}
+  button.ghost:hover{background:var(--surface-2)}
+  button.danger{color:var(--out);border-color:var(--out-soft)}
+  select,input[type=text],input[type=month],input[type=number]{font-family:inherit;font-size:14px;
+    padding:7px 10px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)}
+  label{font-size:13px;color:var(--ink-soft)}
+  a{color:var(--accent-ink)}
+
+  /* layout */
+  header.top{background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+  .top-inner{max-width:1080px;margin:0 auto;padding:0 20px;display:flex;align-items:center;gap:18px;height:60px}
+  .brand{font-weight:800;font-size:17px;display:flex;align-items:center;gap:9px;letter-spacing:-.02em}
+  .brand .dot{width:11px;height:11px;border-radius:3px;background:var(--accent);transform:rotate(45deg)}
+  nav.tabs{display:flex;gap:2px;margin-left:6px;flex-wrap:wrap}
+  nav.tabs button{border:none;background:transparent;color:var(--ink-soft);padding:8px 12px;border-radius:8px;font-weight:600}
+  nav.tabs button:hover{background:var(--surface-2);color:var(--ink)}
+  nav.tabs button.active{background:var(--accent-soft);color:var(--accent-ink)}
+  .top-spacer{flex:1}
+  .privacy{font-size:11.5px;color:var(--ink-faint);display:flex;align-items:center;gap:6px}
+  .privacy::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--in)}
+
+  main{max-width:1080px;margin:0 auto;padding:26px 20px 80px}
+  .view{display:none}
+  .view.active{display:block;animation:fade .18s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.view.active{animation:none}}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .pad{padding:20px 22px}
+  .row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+  .between{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+  h2.title{font-size:22px;margin-bottom:3px}
+  .sub{color:var(--ink-faint);font-size:13.5px}
+  .eyebrow{font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--accent-ink)}
+  .mt{margin-top:22px}.mt-sm{margin-top:12px}
+  .muted{color:var(--ink-faint)}
+  .pos{color:var(--in)}.neg{color:var(--out)}
+
+  /* stat tiles */
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  @media(max-width:720px){.tiles{grid-template-columns:repeat(2,1fr)}}
+  .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow)}
+  .tile .l{font-size:12px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.06em;font-family:ui-monospace,Consolas,monospace}
+  .tile .v{font-size:26px;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums}
+
+  /* category bars */
+  .catbar{display:grid;grid-template-columns:150px 1fr 110px;gap:12px;align-items:center;padding:7px 0}
+  .catbar .name{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .track{height:12px;border-radius:6px;background:var(--surface-2);overflow:hidden}
+  .fill{height:100%;border-radius:6px}
+  .catbar .val{text-align:right;font-size:13.5px}
+  @media(max-width:560px){.catbar{grid-template-columns:1fr 90px}.catbar .track{display:none}}
+
+  /* tables */
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius)}
+  table{border-collapse:collapse;width:100%;font-size:14px}
+  th{background:var(--surface-2);text-align:left;padding:10px 12px;font-size:11px;letter-spacing:.05em;
+    text-transform:uppercase;color:var(--ink-faint);font-weight:600;border-bottom:1px solid var(--line-strong);white-space:nowrap;position:sticky;top:60px}
+  td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:var(--surface-2)}
+  td.amt{text-align:right;white-space:nowrap}
+  .desc{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  select.catsel{padding:4px 6px;font-size:12.5px;max-width:150px}
+  .ownertag{font-size:11px;padding:2px 8px;border-radius:20px;background:var(--surface-2);border:1px solid var(--line);white-space:nowrap}
+
+  .pill{display:inline-block;font-size:11px;font-family:ui-monospace,Consolas,monospace;padding:2px 8px;border-radius:20px;font-weight:600}
+  .pill.in{background:var(--in-soft);color:var(--in)}
+  .pill.out{background:var(--out-soft);color:var(--out)}
+
+  .filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  .grow{flex:1;min-width:140px}
+  .empty{text-align:center;padding:52px 20px;color:var(--ink-faint)}
+  .empty .big{font-size:40px;margin-bottom:8px;opacity:.6}
+
+  /* import mapping */
+  .maprow{display:grid;grid-template-columns:180px 1fr;gap:12px;align-items:center;margin-bottom:12px}
+  @media(max-width:560px){.maprow{grid-template-columns:1fr}}
+  .preview{overflow-x:auto;border:1px solid var(--line);border-radius:8px;margin-top:6px;font-size:12px}
+  .preview table{font-size:12px}.preview th{position:static}
+  .hint{font-size:12.5px;color:var(--ink-faint);margin-top:4px}
+  .drop{border:2px dashed var(--line-strong);border-radius:var(--radius);padding:34px;text-align:center;color:var(--ink-faint);background:var(--surface-2)}
+  .drop.drag{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink)}
+
+  .ruleitem{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+  .ruleitem .kw{flex:1;min-width:120px}
+  .chipcat{font-size:12px;padding:3px 9px;border-radius:20px;font-weight:600;color:#fff;white-space:nowrap}
+
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--bg);
+    padding:11px 18px;border-radius:10px;font-size:14px;font-weight:500;opacity:0;pointer-events:none;transition:.25s;z-index:50;box-shadow:var(--shadow)}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .banner{background:var(--accent-soft);border:1px solid var(--accent);color:var(--accent-ink);border-radius:var(--radius);padding:12px 16px;font-size:13.5px;display:flex;gap:10px;align-items:flex-start;margin-bottom:18px}
+
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:720px){.split{grid-template-columns:1fr}}
+  .kv{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line);font-size:14px}
+  .kv:last-child{border-bottom:none}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div class="brand"><span class="dot"></span> Our Money</div>
+    <nav class="tabs" id="tabs">
+      <button data-view="dashboard" class="active">Dashboard</button>
+      <button data-view="transactions">Transactions</button>
+      <button data-view="import">Import</button>
+      <button data-view="rules">Rules</button>
+      <button data-view="settings">Settings</button>
+    </nav>
+    <div class="top-spacer"></div>
+    <div class="privacy" title="All data is stored only in this browser. Nothing is uploaded.">Private · on this device</div>
+  </div>
+</header>
+
+<main>
+  <!-- DASHBOARD -->
+  <section class="view active" id="view-dashboard">
+    <div class="between" style="margin-bottom:18px">
+      <div><h2 class="title">Where the money goes</h2><div class="sub" id="dash-range">No transactions yet</div></div>
+      <div class="row">
+        <select id="dash-month"></select>
+        <select id="dash-owner"></select>
+      </div>
+    </div>
+    <div id="dash-body"></div>
+  </section>
+
+  <!-- TRANSACTIONS -->
+  <section class="view" id="view-transactions">
+    <h2 class="title">Transactions</h2>
+    <div class="sub" style="margin-bottom:16px">Click any category to change it. Changes save automatically.</div>
+    <div class="filters">
+      <input type="text" id="tx-search" class="grow" placeholder="Search description…">
+      <select id="tx-month"></select>
+      <select id="tx-owner"></select>
+      <select id="tx-cat"></select>
+      <button id="tx-clearfilters" class="ghost">Clear</button>
+    </div>
+    <div id="tx-body"></div>
+  </section>
+
+  <!-- IMPORT -->
+  <section class="view" id="view-import">
+    <h2 class="title">Import a bank statement</h2>
+    <div class="sub" style="margin-bottom:16px">Export a CSV from your online banking, then drop it here. Works with any SA bank — you just tell it which columns are which (once per bank, then it remembers).</div>
+    <div class="banner">
+      <span>💡</span>
+      <span><b>How to get a CSV:</b> In your banking app/website, open the account, choose a date range, and look for <b>Download / Export</b> → pick <b>CSV</b> (or Excel/OFX). FNB, Capitec, Investec, Discovery and TymeBank all offer this.</span>
+    </div>
+    <div class="card pad">
+      <div id="drop" class="drop">
+        <div style="font-size:34px;margin-bottom:6px">📄</div>
+        <div><b>Drop a CSV file here</b> or <button id="pickfile" class="primary" style="margin-left:6px">Choose file</button></div>
+        <input type="file" id="fileinput" accept=".csv,text/csv" style="display:none">
+        <div class="hint" id="drop-hint">Your file is read here in your browser — it is never uploaded.</div>
+      </div>
+      <div id="mapping" style="display:none"></div>
+    </div>
+  </section>
+
+  <!-- RULES -->
+  <section class="view" id="view-rules">
+    <h2 class="title">Auto-categorise rules</h2>
+    <div class="sub" style="margin-bottom:16px">When a transaction description contains a keyword, it gets that category. Rules run top to bottom — the first match wins.</div>
+    <div class="card pad">
+      <div class="row" style="margin-bottom:14px">
+        <input type="text" id="rule-kw" placeholder="Keyword (e.g. WOOLWORTHS)" class="grow">
+        <select id="rule-cat"></select>
+        <button id="rule-add" class="primary">Add rule</button>
+        <button id="rule-recat" class="ghost">Re-run on all transactions</button>
+      </div>
+      <div id="rules-list"></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view" id="view-settings">
+    <h2 class="title">Settings</h2>
+    <div class="sub" style="margin-bottom:16px">Manage categories, people, and your data.</div>
+    <div class="split">
+      <div class="card pad">
+        <h3 style="margin-bottom:10px">Categories</h3>
+        <div class="row" style="margin-bottom:12px">
+          <input type="text" id="cat-new" placeholder="New category" class="grow">
+          <button id="cat-add" class="primary">Add</button>
+        </div>
+        <div id="cat-list"></div>
+      </div>
+      <div class="card pad">
+        <h3 style="margin-bottom:10px">People</h3>
+        <div class="row" style="margin-bottom:12px">
+          <input type="text" id="owner-new" placeholder="Name" class="grow">
+          <button id="owner-add" class="primary">Add</button>
+        </div>
+        <div id="owner-list"></div>
+      </div>
+    </div>
+    <div class="card pad mt">
+      <h3 style="margin-bottom:6px">Backup &amp; restore</h3>
+      <div class="sub" style="margin-bottom:14px">Your data lives only in this browser. Save a backup file to keep it safe or move it to your partner's computer.</div>
+      <div class="row">
+        <button id="backup" class="primary">⬇ Download backup</button>
+        <button id="restore-btn">⬆ Restore from backup</button>
+        <input type="file" id="restore-input" accept=".json" style="display:none">
+        <span class="grow"></span>
+        <button id="wipe" class="danger">Delete all data</button>
+      </div>
+    </div>
+    <div class="card pad mt">
+      <h3 style="margin-bottom:6px">About</h3>
+      <div class="sub">A private, offline budgeting tool for two people. No accounts, no cloud, no cost. Built for South African bank statement imports. <span id="txcount"></span></div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ---------- storage ---------- */
+const KEY="ourmoney.v1";
+const DEFAULT_CATS=["Groceries","Eating out","Transport & fuel","Bills & utilities","Rent / home",
+  "Subscriptions","Shopping","Health","Entertainment","Savings & transfers","Income","Fees & bank","Cash","Other"];
+const DEFAULT_RULES=[
+  ["WOOLWORTHS","Groceries"],["WOOLIES","Groceries"],["CHECKERS","Groceries"],["PICK N PAY","Groceries"],
+  ["PNP","Groceries"],["SHOPRITE","Groceries"],["SPAR","Groceries"],["FOOD LOVER","Groceries"],["MAKRO","Groceries"],
+  ["UBER EATS","Eating out"],["MR D","Eating out"],["MRD FOOD","Eating out"],["KFC","Eating out"],["NANDOS","Eating out"],
+  ["MCDONALD","Eating out"],["STEERS","Eating out"],["VIDA","Eating out"],["MUGG","Eating out"],["WIMPY","Eating out"],["DEBONAIR","Eating out"],
+  ["ENGEN","Transport & fuel"],["SASOL","Transport & fuel"],["BP ","Transport & fuel"],["SHELL","Transport & fuel"],
+  ["TOTAL","Transport & fuel"],["CALTEX","Transport & fuel"],["UBER","Transport & fuel"],["BOLT","Transport & fuel"],["GAUTRAIN","Transport & fuel"],
+  ["VODACOM","Bills & utilities"],["MTN","Bills & utilities"],["TELKOM","Bills & utilities"],["CELL C","Bills & utilities"],
+  ["RAIN","Bills & utilities"],["ESKOM","Bills & utilities"],["MUNICIPAL","Bills & utilities"],["CITY OF","Bills & utilities"],["AFRIHOST","Bills & utilities"],
+  ["NETFLIX","Subscriptions"],["SPOTIFY","Subscriptions"],["DSTV","Subscriptions"],["SHOWMAX","Subscriptions"],
+  ["APPLE.COM","Subscriptions"],["GOOGLE","Subscriptions"],["YOUTUBE","Subscriptions"],["AMAZON PRIME","Subscriptions"],["MICROSOFT","Subscriptions"],
+  ["TAKEALOT","Shopping"],["MRP","Shopping"],["MR PRICE","Shopping"],["H&M","Shopping"],["ZARA","Shopping"],
+  ["GAME ","Shopping"],["INCREDIBLE","Shopping"],["CLICKS","Health"],["DIS-CHEM","Health"],["DISCHEM","Health"],
+  ["MEDICAL","Health"],["PHARMACY","Health"],["DISCOVERY HEALTH","Health"],["MOMENTUM","Health"],
+  ["NU METRO","Entertainment"],["STER KINEKOR","Entertainment"],["COMPUTICKET","Entertainment"],
+  ["FNB APP","Savings & transfers"],["CAPITEC","Savings & transfers"],["TRANSFER","Savings & transfers"],["EASYEQUITIES","Savings & transfers"],
+  ["SALARY","Income"],["SALoryTYPO","Income"],["INTEREST","Income"],
+  ["FEE","Fees & bank"],["SERVICE CHARGE","Fees & bank"],["BANK CHARGE","Fees & bank"],["MONTHLY ACCOUNT","Fees & bank"],
+  ["ATM","Cash"],["CASH WITHDRAW","Cash"],["WITHDRAWAL","Cash"]
+];
+function fresh(){return{transactions:[],categories:DEFAULT_CATS.slice(),
+  rules:DEFAULT_RULES.map(r=>({kw:r[0],cat:r[1]})),owners:["Chante","Partner"],bankMaps:{}};}
+let S=load();
+function load(){try{const r=localStorage.getItem(KEY);if(r){const p=JSON.parse(r);
+  return Object.assign(fresh(),p);}}catch(e){}return fresh();}
+function save(){localStorage.setItem(KEY,JSON.stringify(S));}
+
+/* ---------- helpers ---------- */
+const $=s=>document.querySelector(s);
+const el=(t,c,txt)=>{const n=document.createElement(t);if(c)n.className=c;if(txt!=null)n.textContent=txt;return n;};
+const ZAR=n=>"R "+Math.abs(n).toLocaleString("en-ZA",{minimumFractionDigits:2,maximumFractionDigits:2});
+const ZARsigned=n=>(n<0?"-R ":"R ")+Math.abs(n).toLocaleString("en-ZA",{minimumFractionDigits:2,maximumFractionDigits:2});
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),2200);}
+function catColor(cat){const i=Math.max(0,S.categories.indexOf(cat));return`var(--cat${i%10})`;}
+function monthKey(d){return d.slice(0,7);}
+function monthLabel(k){if(k==="all")return"All months";const[y,m]=k.split("-");
+  return["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m-1]+" "+y;}
+function hash(str){let h=0;for(let i=0;i<str.length;i++){h=(h<<5)-h+str.charCodeAt(i);h|=0;}return h.toString(36);}
+
+/* categorise a description using rules (first match wins) */
+function categorise(desc){const d=desc.toUpperCase();
+  for(const r of S.rules){if(r.kw&&d.includes(r.kw.toUpperCase()))return r.cat;}return "Other";}
+
+/* ---------- CSV parsing ---------- */
+function parseCSV(text){
+  text=text.replace(/^﻿/,"");
+  const rows=[];let field="",row=[],inQ=false;
+  for(let i=0;i<text.length;i++){const c=text[i];
+    if(inQ){if(c==='"'){if(text[i+1]==='"'){field+='"';i++;}else inQ=false;}else field+=c;}
+    else{if(c==='"')inQ=true;
+      else if(c===','){row.push(field);field="";}
+      else if(c==='\n'){row.push(field);rows.push(row);row=[];field="";}
+      else if(c==='\r'){}
+      else field+=c;}}
+  if(field.length||row.length){row.push(field);rows.push(row);}
+  return rows.filter(r=>r.some(c=>c.trim()!==""));
+}
+function parseDate(s){
+  s=(s||"").trim();if(!s)return null;
+  let m;
+  if(m=s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/))return`${m[1]}-${p2(m[2])}-${p2(m[3])}`;
+  if(m=s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/))return`${m[3]}-${p2(m[2])}-${p2(m[1])}`;
+  if(m=s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2})$/)){const y=+m[3]<70?"20"+m[3]:"19"+m[3];return`${y}-${p2(m[2])}-${p2(m[1])}`;}
+  const mon={jan:"01",feb:"02",mar:"03",apr:"04",may:"05",jun:"06",jul:"07",aug:"08",sep:"09",oct:"10",nov:"11",dec:"12"};
+  if(m=s.match(/^(\d{1,2})\s*([A-Za-z]{3})[A-Za-z]*\s*(\d{2,4})/)){const mm=mon[m[2].toLowerCase()];
+    if(mm){let y=m[3];if(y.length===2)y=+y<70?"20"+y:"19"+y;return`${y}-${mm}-${p2(m[1])}`;}}
+  const d=new Date(s);if(!isNaN(d))return d.toISOString().slice(0,10);
+  return null;
+}
+function p2(x){x=String(x);return x.length<2?"0"+x:x;}
+function num(s){if(s==null)return NaN;s=String(s).replace(/[R\s,]/g,"").replace(/[()]/g,m=>m==="("?"-":"");
+  if(/^-?\d*\.?\d+$/.test(s))return parseFloat(s);
+  // handle "1.234,56" european just in case
+  return parseFloat(s.replace(/\./g,"").replace(",","."));}
+
+/* ---------- import flow ---------- */
+let pending=null; // {rows, headers}
+function handleFile(file){
+  const rd=new FileReader();
+  rd.onload=()=>{try{
+    const rows=parseCSV(rd.result);
+    if(rows.length<2){toast("That file has no rows I can read.");return;}
+    // find header row: first row where >1 cell is non-numeric text
+    let hIdx=0;
+    for(let i=0;i<Math.min(rows.length,8);i++){const textCells=rows[i].filter(c=>c.trim()&&isNaN(num(c))).length;
+      if(textCells>=2){hIdx=i;break;}}
+    const headers=rows[hIdx].map((h,i)=>h.trim()||("Column "+(i+1)));
+    const body=rows.slice(hIdx+1);
+    pending={headers,body};
+    showMapping();
+  }catch(e){toast("Could not read that file.");console.error(e);}};
+  rd.readAsText(file);
+}
+function guess(headers,words){for(let i=0;i<headers.length;i++){const h=headers[i].toLowerCase();
+  if(words.some(w=>h.includes(w)))return i;}return -1;}
+function showMapping(){
+  const H=pending.headers;
+  const gDate=guess(H,["date","datum"]);
+  const gDesc=guess(H,["description","desc","narrative","detail","reference","memo","payee"]);
+  const gAmt=guess(H,["amount","amt","value"]);
+  const gDeb=guess(H,["debit","paid out","money out","withdraw"]);
+  const gCred=guess(H,["credit","paid in","money in","deposit"]);
+  const opts=(sel)=>H.map((h,i)=>`<option value="${i}" ${i===sel?"selected":""}>${esc(h)}</option>`).join("");
+  const optsN=(sel)=>`<option value="-1">— none —</option>`+H.map((h,i)=>`<option value="${i}" ${i===sel?"selected":""}>${esc(h)}</option>`).join("");
+  const ownerOpts=S.owners.map(o=>`<option>${esc(o)}</option>`).join("")+`<option>Joint</option>`;
+  const twoCol=gDeb>-1&&gCred>-1;
+  const m=$("#mapping");
+  m.style.display="block";
+  m.innerHTML=`
+    <h3 style="margin:20px 0 4px">Match up the columns</h3>
+    <div class="hint" style="margin-bottom:16px">I guessed these from your file — fix any that are wrong.</div>
+    <div class="maprow"><label>Date column</label><select id="mDate">${opts(gDate)}</select></div>
+    <div class="maprow"><label>Description column</label><select id="mDesc">${opts(gDesc)}</select></div>
+    <div class="maprow"><label>Amount style</label>
+      <select id="mStyle">
+        <option value="single" ${!twoCol?"selected":""}>One amount column (money out is negative)</option>
+        <option value="singlePos">One amount column (money out is positive)</option>
+        <option value="two" ${twoCol?"selected":""}>Separate Debit &amp; Credit columns</option>
+      </select></div>
+    <div class="maprow amtsingle"><label>Amount column</label><select id="mAmt">${opts(gAmt>-1?gAmt:gDeb)}</select></div>
+    <div class="maprow amttwo" style="display:none"><label>Debit (money out)</label><select id="mDeb">${optsN(gDeb)}</select></div>
+    <div class="maprow amttwo" style="display:none"><label>Credit (money in)</label><select id="mCred">${optsN(gCred)}</select></div>
+    <div class="maprow"><label>Whose account?</label><select id="mOwner">${ownerOpts}</select></div>
+    <div class="maprow"><label>Bank / account name</label><input type="text" id="mBank" placeholder="e.g. FNB Cheque"></div>
+    <div id="mPreview"></div>
+    <div class="row" style="margin-top:18px">
+      <button class="primary" id="doImport">Import transactions</button>
+      <button class="ghost" id="cancelImport">Cancel</button>
+      <span class="hint" id="importStat"></span>
+    </div>`;
+  const styleSel=$("#mStyle");
+  const syncStyle=()=>{const two=styleSel.value==="two";
+    m.querySelectorAll(".amtsingle").forEach(e=>e.style.display=two?"none":"grid");
+    m.querySelectorAll(".amttwo").forEach(e=>e.style.display=two?"grid":"none");renderPreview();};
+  styleSel.onchange=syncStyle;
+  ["mDate","mDesc","mAmt","mDeb","mCred","mStyle"].forEach(id=>{const e=document.getElementById(id);if(e)e.onchange=renderPreview;});
+  $("#doImport").onclick=doImport;
+  $("#cancelImport").onclick=()=>{pending=null;m.style.display="none";m.innerHTML="";};
+  syncStyle();renderPreview();
+}
+function readMapping(){
+  const style=$("#mStyle").value;
+  return{date:+$("#mDate").value,desc:+$("#mDesc").value,style,
+    amt:$("#mAmt")?+$("#mAmt").value:-1,
+    deb:$("#mDeb")?+$("#mDeb").value:-1,cred:$("#mCred")?+$("#mCred").value:-1,
+    owner:$("#mOwner").value,bank:$("#mBank").value.trim()};
+}
+function rowToAmount(r,map){
+  if(map.style==="two"){const d=map.deb>-1?num(r[map.deb]):NaN;const c=map.cred>-1?num(r[map.cred]):NaN;
+    let v=0;if(!isNaN(d)&&Math.abs(d)>0)v-=Math.abs(d);if(!isNaN(c)&&Math.abs(c)>0)v+=Math.abs(c);return v;}
+  let v=num(r[map.amt]);if(isNaN(v))return NaN;
+  if(map.style==="singlePos")v=-Math.abs(v);
+  return v;
+}
+function buildRows(map){
+  const out=[];
+  for(const r of pending.body){
+    const date=parseDate(r[map.date]);const desc=(r[map.desc]||"").trim();
+    const amt=rowToAmount(r,map);
+    if(!date||isNaN(amt)||amt===0&&!desc)continue;
+    if(!desc)continue;
+    out.push({date,desc,amt});
+  }
+  return out;
+}
+function renderPreview(){
+  const map=readMapping();const rows=buildRows(map).slice(0,5);
+  const box=$("#mPreview");
+  if(!rows.length){box.innerHTML=`<div class="hint" style="color:var(--warn);margin-top:14px">No readable rows yet — check the Date and Amount columns above.</div>`;return;}
+  box.innerHTML=`<div class="hint" style="margin-top:16px">Preview (first 5 rows):</div>
+    <div class="preview"><table><thead><tr><th>Date</th><th>Description</th><th style="text-align:right">Amount</th><th>Category</th></tr></thead>
+    <tbody>${rows.map(x=>`<tr><td class="mono">${x.date}</td><td class="desc">${esc(x.desc)}</td>
+      <td class="amt ${x.amt<0?'neg':'pos'}">${ZARsigned(x.amt)}</td><td>${esc(categorise(x.desc))}</td></tr>`).join("")}</tbody></table></div>`;
+}
+function doImport(){
+  const map=readMapping();
+  const rows=buildRows(map);
+  if(!rows.length){toast("Nothing to import — check the column choices.");return;}
+  const existing=new Set(S.transactions.map(t=>t.id));
+  let added=0,dupes=0;
+  for(const x of rows){
+    const id=hash(x.date+"|"+x.amt.toFixed(2)+"|"+x.desc+"|"+map.owner);
+    if(existing.has(id)){dupes++;continue;}
+    existing.add(id);
+    S.transactions.push({id,date:x.date,desc:x.desc,amt:x.amt,owner:map.owner,
+      bank:map.bank||"Import",cat:categorise(x.desc)});
+    added++;
+  }
+  if(map.bank)S.bankMaps[map.bank]=map;
+  save();
+  pending=null;$("#mapping").style.display="none";$("#mapping").innerHTML="";
+  toast(`Imported ${added} transaction${added!==1?"s":""}${dupes?`, skipped ${dupes} already there`:""}.`);
+  renderAll();switchView("dashboard");
+}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+/* ---------- filters state ---------- */
+function monthsList(){const set=new Set(S.transactions.map(t=>monthKey(t.date)));
+  return Array.from(set).sort().reverse();}
+function fillMonthSelect(sel,withAll){const cur=sel.value;sel.innerHTML="";
+  if(withAll)sel.appendChild(new Option("All months","all"));
+  for(const k of monthsList())sel.appendChild(new Option(monthLabel(k),k));
+  if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;}
+function fillOwnerSelect(sel){const cur=sel.value;sel.innerHTML="";
+  sel.appendChild(new Option("Everyone","all"));
+  for(const o of S.owners)sel.appendChild(new Option(o,o));
+  sel.appendChild(new Option("Joint","Joint"));
+  if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;}
+function fillCatSelect(sel,withAll){const cur=sel.value;sel.innerHTML="";
+  if(withAll)sel.appendChild(new Option("All categories","all"));
+  for(const c of S.categories)sel.appendChild(new Option(c,c));
+  if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;}
+
+/* ---------- dashboard ---------- */
+function renderDashboard(){
+  fillMonthSelect($("#dash-month"),true);
+  fillOwnerSelect($("#dash-owner"));
+  const month=$("#dash-month").value||"all";
+  const owner=$("#dash-owner").value||"all";
+  let tx=S.transactions.slice();
+  if(month!=="all")tx=tx.filter(t=>monthKey(t.date)===month);
+  if(owner!=="all")tx=tx.filter(t=>t.owner===owner);
+  const body=$("#dash-body");
+  if(!S.transactions.length){body.innerHTML=emptyState("No transactions yet","Head to the Import tab and drop in a bank statement CSV to get started.","import","Go to Import");
+    $("#dash-range").textContent="No transactions yet";return;}
+  $("#dash-range").textContent=`${tx.length} transaction${tx.length!==1?"s":""} · ${monthLabel(month)} · ${owner==="all"?"everyone":owner}`;
+  const inSum=tx.filter(t=>t.amt>0).reduce((a,t)=>a+t.amt,0);
+  const outSum=tx.filter(t=>t.amt<0).reduce((a,t)=>a+t.amt,0);
+  const net=inSum+outSum;
+  const spendByCat={};
+  tx.filter(t=>t.amt<0).forEach(t=>{spendByCat[t.cat]=(spendByCat[t.cat]||0)+Math.abs(t.amt);});
+  const cats=Object.entries(spendByCat).sort((a,b)=>b[1]-a[1]);
+  const maxCat=cats.length?cats[0][1]:1;
+  const totalOut=Math.abs(outSum)||1;
+  // per person spend
+  const byOwner={};tx.filter(t=>t.amt<0).forEach(t=>{byOwner[t.owner]=(byOwner[t.owner]||0)+Math.abs(t.amt);});
+  const owners=Object.entries(byOwner).sort((a,b)=>b[1]-a[1]);
+
+  body.innerHTML=`
+    <div class="tiles">
+      <div class="tile"><div class="l">Money in</div><div class="v pos">${ZAR(inSum)}</div></div>
+      <div class="tile"><div class="l">Money out</div><div class="v neg">${ZAR(outSum)}</div></div>
+      <div class="tile"><div class="l">Net</div><div class="v ${net<0?'neg':'pos'}">${ZARsigned(net)}</div></div>
+      <div class="tile"><div class="l">Transactions</div><div class="v">${tx.length}</div></div>
+    </div>
+    <div class="card pad mt">
+      <div class="between" style="margin-bottom:6px"><h3>Spending by category</h3><span class="sub">${ZAR(outSum)} total out</span></div>
+      ${cats.length?cats.map(([c,v])=>`
+        <div class="catbar">
+          <span class="name" title="${esc(c)}">${esc(c)}</span>
+          <div class="track"><div class="fill" style="width:${Math.max(3,v/maxCat*100)}%;background:${catColor(c)}"></div></div>
+          <span class="val amt">${ZAR(v)} <span class="muted">· ${Math.round(v/totalOut*100)}%</span></span>
+        </div>`).join(""):`<div class="muted" style="padding:10px 0">No spending in this view.</div>`}
+    </div>
+    ${owners.length>1?`<div class="card pad mt">
+      <h3 style="margin-bottom:8px">Who spent what</h3>
+      ${owners.map(([o,v])=>`<div class="catbar"><span class="name">${esc(o)}</span>
+        <div class="track"><div class="fill" style="width:${Math.max(3,v/owners[0][1]*100)}%;background:var(--accent)"></div></div>
+        <span class="val amt">${ZAR(v)}</span></div>`).join("")}
+    </div>`:""}
+    <div class="card pad mt">
+      <h3 style="margin-bottom:10px">Biggest expenses</h3>
+      ${topExpenses(tx)}
+    </div>`;
+}
+function topExpenses(tx){const top=tx.filter(t=>t.amt<0).sort((a,b)=>a.amt-b.amt).slice(0,8);
+  if(!top.length)return`<div class="muted">Nothing here yet.</div>`;
+  return top.map(t=>`<div class="kv"><span>${esc(t.desc)} <span class="muted mono" style="font-size:12px">· ${t.date} · ${esc(t.cat)}</span></span>
+    <span class="amt neg">${ZAR(t.amt)}</span></div>`).join("");}
+function emptyState(title,msg,view,btn){return`<div class="card"><div class="empty">
+  <div class="big">📊</div><h3 style="margin-bottom:6px">${title}</h3><div style="margin-bottom:16px;max-width:380px;margin-left:auto;margin-right:auto">${msg}</div>
+  <button class="primary" onclick="switchView('${view}')">${btn}</button></div></div>`;}
+
+/* ---------- transactions ---------- */
+function renderTransactions(){
+  fillMonthSelect($("#tx-month"),true);fillOwnerSelect($("#tx-owner"));fillCatSelect($("#tx-cat"),true);
+  const q=$("#tx-search").value.trim().toLowerCase();
+  const month=$("#tx-month").value||"all",owner=$("#tx-owner").value||"all",cat=$("#tx-cat").value||"all";
+  let tx=S.transactions.slice().sort((a,b)=>b.date.localeCompare(a.date));
+  if(month!=="all")tx=tx.filter(t=>monthKey(t.date)===month);
+  if(owner!=="all")tx=tx.filter(t=>t.owner===owner);
+  if(cat!=="all")tx=tx.filter(t=>t.cat===cat);
+  if(q)tx=tx.filter(t=>t.desc.toLowerCase().includes(q)||t.cat.toLowerCase().includes(q));
+  const body=$("#tx-body");
+  if(!S.transactions.length){body.innerHTML=emptyState("No transactions yet","Import a CSV bank statement to see your transactions here.","import","Go to Import");return;}
+  const catOpts=c=>S.categories.map(x=>`<option ${x===c?"selected":""}>${esc(x)}</option>`).join("");
+  body.innerHTML=`<div class="sub" style="margin-bottom:10px">${tx.length} shown</div>
+  <div class="tablewrap"><table><thead><tr><th>Date</th><th>Description</th><th>Who</th><th>Category</th><th style="text-align:right">Amount</th><th></th></tr></thead>
+  <tbody>${tx.map(t=>`<tr data-id="${t.id}">
+    <td class="mono" style="white-space:nowrap">${t.date}</td>
+    <td class="desc" title="${esc(t.desc)}">${esc(t.desc)}</td>
+    <td><span class="ownertag">${esc(t.owner)}</span></td>
+    <td><select class="catsel" data-id="${t.id}">${catOpts(t.cat)}</select></td>
+    <td class="amt ${t.amt<0?'neg':'pos'}">${ZARsigned(t.amt)}</td>
+    <td><button class="ghost del" data-id="${t.id}" title="Delete" style="padding:4px 8px">✕</button></td>
+  </tr>`).join("")}</tbody></table></div>`;
+  body.querySelectorAll(".catsel").forEach(s=>s.onchange=()=>{
+    const t=S.transactions.find(x=>x.id===s.dataset.id);if(t){t.cat=s.value;save();toast("Category updated");}});
+  body.querySelectorAll(".del").forEach(b=>b.onclick=()=>{
+    S.transactions=S.transactions.filter(x=>x.id!==b.dataset.id);save();renderAll();toast("Deleted");});
+}
+
+/* ---------- rules ---------- */
+function renderRules(){
+  fillCatSelect($("#rule-cat"),false);
+  const list=$("#rules-list");
+  if(!S.rules.length){list.innerHTML=`<div class="muted">No rules yet.</div>`;return;}
+  list.innerHTML=S.rules.map((r,i)=>`<div class="ruleitem">
+    <span class="mono kw">"${esc(r.kw)}"</span>
+    <span class="muted">→</span>
+    <span class="chipcat" style="background:${catColor(r.cat)}">${esc(r.cat)}</span>
+    <button class="ghost del" data-i="${i}" style="padding:4px 8px">✕</button></div>`).join("");
+  list.querySelectorAll(".del").forEach(b=>b.onclick=()=>{S.rules.splice(+b.dataset.i,1);save();renderRules();});
+}
+
+/* ---------- settings lists ---------- */
+function renderSettings(){
+  $("#cat-list").innerHTML=S.categories.map((c,i)=>`<div class="ruleitem">
+    <span class="chipcat" style="background:${catColor(c)}">${esc(c)}</span><span class="grow"></span>
+    <button class="ghost del" data-c="${esc(c)}" style="padding:4px 8px">✕</button></div>`).join("");
+  $("#cat-list").querySelectorAll(".del").forEach(b=>b.onclick=()=>{
+    const c=b.dataset.c;if(S.categories.length<=1)return;
+    S.categories=S.categories.filter(x=>x!==c);
+    S.transactions.forEach(t=>{if(t.cat===c)t.cat="Other";});
+    if(!S.categories.includes("Other"))S.categories.push("Other");
+    save();renderAll();});
+  $("#owner-list").innerHTML=S.owners.map(o=>`<div class="ruleitem">
+    <span>${esc(o)}</span><span class="grow"></span>
+    <button class="ghost del" data-o="${esc(o)}" style="padding:4px 8px">✕</button></div>`).join("");
+  $("#owner-list").querySelectorAll(".del").forEach(b=>b.onclick=()=>{
+    if(S.owners.length<=1)return;S.owners=S.owners.filter(x=>x!==b.dataset.o);save();renderAll();});
+  $("#txcount").textContent=`You have ${S.transactions.length} transaction${S.transactions.length!==1?"s":""} stored.`;
+}
+
+/* ---------- views ---------- */
+function switchView(v){
+  document.querySelectorAll(".view").forEach(s=>s.classList.remove("active"));
+  $("#view-"+v).classList.add("active");
+  document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active",b.dataset.view===v));
+  window.scrollTo(0,0);
+}
+function renderAll(){renderDashboard();renderTransactions();renderRules();renderSettings();}
+
+/* ---------- events ---------- */
+$("#tabs").onclick=e=>{if(e.target.dataset.view)switchView(e.target.dataset.view);};
+$("#dash-month").onchange=renderDashboard;$("#dash-owner").onchange=renderDashboard;
+["#tx-search","#tx-month","#tx-owner","#tx-cat"].forEach(s=>{const e=$(s);e.oninput=renderTransactions;e.onchange=renderTransactions;});
+$("#tx-clearfilters").onclick=()=>{$("#tx-search").value="";$("#tx-month").value="all";$("#tx-owner").value="all";$("#tx-cat").value="all";renderTransactions();};
+$("#pickfile").onclick=()=>$("#fileinput").click();
+$("#fileinput").onchange=e=>{if(e.target.files[0])handleFile(e.target.files[0]);};
+const drop=$("#drop");
+["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("drag");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("drag");}));
+drop.addEventListener("drop",e=>{const f=e.dataTransfer.files[0];if(f)handleFile(f);});
+$("#rule-add").onclick=()=>{const kw=$("#rule-kw").value.trim();const cat=$("#rule-cat").value;
+  if(!kw)return;S.rules.unshift({kw,cat});$("#rule-kw").value="";save();renderRules();toast("Rule added");};
+$("#rule-recat").onclick=()=>{let n=0;S.transactions.forEach(t=>{const c=categorise(t.desc);if(c!==t.cat){t.cat=c;n++;}});
+  save();renderAll();toast(`Re-categorised ${n} transaction${n!==1?"s":""}.`);};
+$("#cat-add").onclick=()=>{const c=$("#cat-new").value.trim();if(!c||S.categories.includes(c))return;
+  S.categories.push(c);$("#cat-new").value="";save();renderAll();};
+$("#owner-add").onclick=()=>{const o=$("#owner-new").value.trim();if(!o||S.owners.includes(o))return;
+  S.owners.push(o);$("#owner-new").value="";save();renderAll();};
+$("#backup").onclick=()=>{const blob=new Blob([JSON.stringify(S,null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download="our-money-backup-"+new Date().toISOString().slice(0,10)+".json";a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast("Backup downloaded");};
+$("#restore-btn").onclick=()=>$("#restore-input").click();
+$("#restore-input").onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();
+  rd.onload=()=>{try{const p=JSON.parse(rd.result);if(!p.transactions)throw 0;
+    S=Object.assign(fresh(),p);save();renderAll();switchView("dashboard");toast("Backup restored");}
+    catch(err){toast("That doesn't look like a valid backup file.");}};rd.readAsText(f);};
+$("#wipe").onclick=()=>{if(confirm("Delete ALL your data from this browser? This cannot be undone. (Download a backup first if unsure.)")){
+  S=fresh();save();renderAll();switchView("dashboard");toast("All data deleted");}};
+
+/* keyboard: enter to add in inputs */
+$("#rule-kw").addEventListener("keydown",e=>{if(e.key==="Enter")$("#rule-add").click();});
+$("#cat-new").addEventListener("keydown",e=>{if(e.key==="Enter")$("#cat-add").click();});
+$("#owner-new").addEventListener("keydown",e=>{if(e.key==="Enter")$("#owner-add").click();});
+
+renderAll();
+</script>
+</body>
+</html>

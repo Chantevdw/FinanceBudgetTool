@@ -1,0 +1,12 @@
+# Personal financial data — NEVER commit these
+our-money-backup-*.json
+*-backup-*.json
+/statements/
+# real bank statements: keep them out of the repo (the fake sample-statement.csv is fine)
+*.csv
+!sample-statement.csv
+
+# OS / editor cruft
+Thumbs.db
+.DS_Store
+desktop.ini
