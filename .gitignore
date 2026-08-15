@@ -5,6 +5,11 @@ our-money-backup-*.json
 # real bank statements: keep them out of the repo (the fake sample-statement.csv is fine)
 *.csv
 !sample-statement.csv
+*.pdf
+*.xlsx
+*.xls
+*.ofx
+*.qif
 
 # OS / editor cruft
 Thumbs.db

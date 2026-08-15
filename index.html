@@ -284,14 +284,14 @@
     <div class="sub" style="margin-bottom:14px">Export a CSV from your banking app, then add it here. Works with any SA bank — you just confirm the columns.</div>
     <div class="banner">
       <span>💡</span>
-      <span><b>On your phone:</b> in your banking app, download/export the statement as <b>CSV</b> (it saves to Files/Downloads), then tap <b>Choose file</b> below and pick it. On a computer you can also drag &amp; drop.</span>
+      <span><b>CSV or PDF works.</b> Export a <b>CSV</b> from online banking, or use an <b>FNB PDF</b> statement (great for backdated history and the FNB app, which only gives PDF). Tap <b>Choose file</b> and pick it — on a computer you can also drag &amp; drop.</span>
     </div>
     <div class="card pad">
       <div id="drop" class="drop">
         <div style="font-size:32px;margin-bottom:6px">📄</div>
-        <div style="margin-bottom:12px"><b>Add a CSV file</b></div>
+        <div style="margin-bottom:12px"><b>Add a CSV or FNB PDF</b></div>
         <button id="pickfile" class="primary">Choose file</button>
-        <input type="file" id="fileinput" accept=".csv,text/csv,text/comma-separated-values" style="display:none">
+        <input type="file" id="fileinput" accept=".csv,.pdf,text/csv,text/comma-separated-values,application/pdf" style="display:none">
         <div class="hint" style="margin-top:12px">Read here in your browser — never uploaded.</div>
       </div>
       <div id="mapping" style="display:none"></div>
@@ -452,6 +452,8 @@ function num(s){if(s==null)return NaN;s=String(s).replace(/[R\s,]/g,"").replace(
 /* ---------- import flow ---------- */
 let pending=null;
 function handleFile(file){
+  const name=(file.name||"").toLowerCase();
+  if(name.endsWith(".pdf")||file.type==="application/pdf"){handlePdf(file);return;}
   const rd=new FileReader();
   rd.onload=()=>{try{
     const rows=parseCSV(rd.result);
@@ -543,23 +545,122 @@ function renderPreview(){
     <tbody>${rows.map(x=>`<tr><td class="mono">${x.date}</td><td>${esc(x.desc)}</td>
       <td class="amt ${x.amt<0?'neg':'pos'}" style="text-align:right">${ZARsigned(x.amt)}</td><td>${esc(categorise(x.desc))}</td></tr>`).join("")}</tbody></table></div>`;
 }
-function doImport(){
-  const map=readMapping();const rows=buildRows(map);
-  if(!rows.length){toast("Nothing to import — check the column choices.");return;}
+function importRows(rows,owner,bank){
   const existing=new Set(S.transactions.map(t=>t.id));
   let added=0,dupes=0;
   for(const x of rows){
-    const id=hash(x.date+"|"+x.amt.toFixed(2)+"|"+x.desc+"|"+map.owner);
+    const id=hash(x.date+"|"+x.amt.toFixed(2)+"|"+x.desc+"|"+owner);
     if(existing.has(id)){dupes++;continue;}
     existing.add(id);
-    S.transactions.push({id,date:x.date,desc:x.desc,amt:x.amt,owner:map.owner,bank:map.bank||"Import",cat:categorise(x.desc)});
+    S.transactions.push({id,date:x.date,desc:x.desc,amt:x.amt,owner,bank:bank||"Import",cat:categorise(x.desc)});
     added++;
   }
-  if(map.bank)S.bankMaps[map.bank]=map;
   save();
-  pending=null;$("#mapping").style.display="none";$("#mapping").innerHTML="";
   toast(`Imported ${added} transaction${added!==1?"s":""}${dupes?`, skipped ${dupes} already there`:""}.`);
   renderAll();switchView("dashboard");
+}
+function doImport(){
+  const map=readMapping();const rows=buildRows(map);
+  if(!rows.length){toast("Nothing to import — check the column choices.");return;}
+  if(map.bank)S.bankMaps[map.bank]=map;
+  pending=null;$("#mapping").style.display="none";$("#mapping").innerHTML="";
+  importRows(rows,map.owner,map.bank);
+}
+
+/* ---------- PDF import (FNB statements) ---------- */
+let _pdfjs=null;
+function ensurePdfjs(){
+  if(window.pdfjsLib)return Promise.resolve(window.pdfjsLib);
+  if(_pdfjs)return _pdfjs;
+  _pdfjs=new Promise((res,rej)=>{
+    const s=document.createElement("script");s.src="pdf.min.js";
+    s.onload=()=>{try{window.pdfjsLib.GlobalWorkerOptions.workerSrc="pdf.worker.min.js";res(window.pdfjsLib);}catch(e){rej(e);}};
+    s.onerror=()=>rej(new Error("PDF reader failed to load (need internet the first time)."));
+    document.head.appendChild(s);
+  });
+  return _pdfjs;
+}
+const PDF_MON={jan:1,feb:2,mar:3,mrt:3,apr:4,may:5,mei:5,jun:6,jul:7,aug:8,sep:9,oct:10,okt:10,nov:11,dec:12,des:12};
+const PN=s=>parseFloat(String(s).replace(/[ ,]/g,""));
+async function pdfLines(file){
+  const lib=await ensurePdfjs();
+  const buf=await file.arrayBuffer();
+  const doc=await lib.getDocument({data:new Uint8Array(buf)}).promise;
+  const out=[];
+  for(let p=1;p<=doc.numPages;p++){
+    const page=await doc.getPage(p);const tc=await page.getTextContent();
+    const rows={};
+    for(const it of tc.items){if(!it.str.trim())continue;const y=Math.round(it.transform[5]);(rows[y]=rows[y]||[]).push({x:it.transform[4],s:it.str});}
+    for(const y of Object.keys(rows).map(Number).sort((a,b)=>b-a))out.push(rows[y].sort((a,b)=>a.x-b.x).map(o=>o.s).join(" ").replace(/\s+/g," ").trim());
+  }
+  return out;
+}
+function pdfDetect(full){if(/credit card|kredietkaart/i.test(full))return"card";if(/vaste deposito|fixed deposit/i.test(full))return"fixed";return"current";}
+function pdfParseCurrent(lines,full){
+  const per=full.match(/Periode\s*:?\s*(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})[\s\S]*?(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/i);
+  const sM=per?per[2].toLowerCase().slice(0,3):null,sY=per?+per[3]:null,eY=per?+per[6]:null;
+  const yr=m=>sY&&PDF_MON[m]===PDF_MON[sM]?sY:(eY||new Date().getFullYear());
+  const tx=[];
+  for(const line of lines){
+    const dm=line.match(/^(\d{1,2})\s+([A-Za-z]{3})\b/);if(!dm)continue;const mon=dm[2].toLowerCase();if(!(mon in PDF_MON))continue;
+    const bal=line.match(/^(.+?)\s+([\d,]+\.\d{2})\s*(Kt|Dt)\s*$/);if(!bal)continue;const prefix=bal[1];
+    const am=prefix.match(/([\d,]+\.\d{2})\s*(Kt|Dt)?\s*$/);if(!am)continue;
+    const amt=(am[2]==="Kt")?Math.abs(PN(am[1])):-Math.abs(PN(am[1]));
+    const desc=prefix.slice(0,am.index).replace(/^\d{1,2}\s+[A-Za-z]{3}\s*/,"").trim();
+    tx.push({date:`${yr(mon)}-${p2(PDF_MON[mon])}-${p2(+dm[1])}`,desc,amt});
+  }
+  const op=full.match(/Openingsaldo\s+([\d,]+\.\d{2})/i),cl=full.match(/Afsluitingsaldo\s+([\d,]+\.\d{2})/i);
+  return{tx,opening:op?PN(op[1]):null,closing:cl?PN(cl[1]):null};
+}
+function pdfParseCard(lines,full){
+  const sd=full.match(/Statement Date\s+(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})/i);
+  const sM=sd?PDF_MON[sd[2].toLowerCase()]:null,sY=sd?+sd[3]:new Date().getFullYear();
+  const yr=m=>sM&&PDF_MON[m]>sM?sY-1:sY;
+  const tx=[];
+  for(const line of lines){
+    const dm=line.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(.*?)\s*(\d{1,3}(?: \d{3})*\.\d{2})\s*(Cr)?\s*$/);
+    if(!dm)continue;const mon=dm[2].toLowerCase();if(!(mon in PDF_MON))continue;
+    const amt=(dm[5]==="Cr")?Math.abs(PN(dm[4])):-Math.abs(PN(dm[4]));
+    tx.push({date:`${yr(mon)}-${p2(PDF_MON[mon])}-${p2(+dm[1])}`,desc:dm[3].trim(),amt});
+  }
+  const op=full.match(/Opening Balance\s+([\d, ]+\.\d{2})/i),cl=full.match(/Closing Balance\s+([\d, ]+\.\d{2})\s*(Cr)?/i);
+  return{tx,opening:op?PN(op[1]):null,closing:cl?(cl[2]?-PN(cl[1]):PN(cl[1])):null};
+}
+async function handlePdf(file){
+  toast("Reading PDF…");
+  let res,type;
+  try{
+    const lines=await pdfLines(file);const full=lines.join("\n");type=pdfDetect(full);
+    res=(type==="card")?pdfParseCard(lines,full):pdfParseCurrent(lines,full);
+  }catch(e){console.error(e);toast(e.message||"Couldn't read that PDF (is it a scan rather than a real statement?)");return;}
+  if(!res.tx.length){toast("No transactions found in that PDF layout — send it to me and I'll add support.");return;}
+  showPdfConfirm(res,type,file.name);
+}
+function showPdfConfirm(res,type,filename){
+  const m=$("#mapping");m.style.display="block";
+  const ownerOpts=S.owners.map(o=>`<option>${esc(o)}</option>`).join("")+`<option>Joint</option>`;
+  const typeLbl={current:"Cheque / Current account",card:"Credit card",fixed:"Fixed deposit"}[type]||type;
+  let recon="";
+  if(type==="current"&&res.opening!=null&&res.closing!=null){
+    const sum=res.tx.reduce((a,x)=>a+x.amt,0);const ok=Math.abs(res.opening+sum-res.closing)<0.02;
+    recon=`<div class="hint" style="color:${ok?'var(--in)':'var(--warn)'}">${ok?"✓ Balanced — the transactions add up to the statement's closing balance.":"⚠ Doesn't fully reconcile — worth a quick check after importing."}</div>`;
+  }
+  m.innerHTML=`
+    <h3 style="margin:20px 0 4px">FNB PDF — ${typeLbl}</h3>
+    <div class="hint" style="margin-bottom:12px">Found <b>${res.tx.length}</b> transactions in <b>${esc(filename)}</b>.</div>
+    ${recon}
+    <div class="maprow"><label>Whose account?</label><select id="pOwner">${ownerOpts}</select></div>
+    <div class="maprow"><label>Account name</label><input type="text" id="pBank" value="${esc("FNB "+typeLbl)}"></div>
+    <div class="preview" style="margin-top:8px"><table><thead><tr><th>Date</th><th>Description</th><th style="text-align:right">Amount</th><th>Category</th></tr></thead>
+      <tbody>${res.tx.slice(0,6).map(x=>`<tr><td class="mono">${x.date}</td><td>${esc(x.desc||"—")}</td><td class="amt ${x.amt<0?'neg':'pos'}" style="text-align:right">${ZARsigned(x.amt)}</td><td>${esc(categorise(x.desc))}</td></tr>`).join("")}</tbody></table></div>
+    <div class="row" style="margin-top:18px">
+      <button class="primary" id="pImport">Import ${res.tx.length} transactions</button>
+      <button class="ghost" id="pCancel">Cancel</button>
+    </div>`;
+  $("#pImport").onclick=()=>{const owner=$("#pOwner").value,bank=$("#pBank").value.trim();
+    m.style.display="none";m.innerHTML="";importRows(res.tx,owner,bank);};
+  $("#pCancel").onclick=()=>{m.style.display="none";m.innerHTML="";};
+  m.scrollIntoView({behavior:"smooth",block:"nearest"});
 }
 
 /* ---------- selects ---------- */
