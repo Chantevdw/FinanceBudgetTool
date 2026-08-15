@@ -181,7 +181,46 @@
     .c-date{font-size:14px;color:var(--ink)}
     .c-desc{max-width:none}
     .c-cat select{max-width:172px}
+    .coach-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
   }
+
+  /* ---------- coach ---------- */
+  .coach-note{font-size:12px;color:var(--ink-faint);margin-top:12px}
+  .coach-head{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .ring{position:relative;width:118px;height:118px;flex:0 0 auto;border-radius:50%;
+    background:conic-gradient(var(--ring-color,var(--accent)) calc(var(--p,0)*3.6deg), var(--surface-2) 0)}
+  .ring-inner{position:absolute;inset:11px;border-radius:50%;background:var(--surface);
+    display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .ring-num{font-size:32px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+  .ring-lbl{font-size:11px;color:var(--ink-faint)}
+  .band{display:inline-block;font-size:12px;font-weight:700;padding:3px 11px;border-radius:20px;margin-bottom:6px}
+  .metric .big{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
+  .metric .cap{font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.05em;font-family:ui-monospace,Consolas,monospace}
+  .split-bar{display:flex;height:26px;border-radius:8px;overflow:hidden;background:var(--surface-2);margin:12px 0 8px}
+  .seg{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;white-space:nowrap;min-width:0;overflow:hidden}
+  .seg.need{background:#3b6ea5}.seg.want{background:#c07a3e}.seg.save{background:var(--in)}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;margin-top:4px}
+  .legend .k{display:flex;align-items:center;gap:6px}
+  .legend .sw{width:11px;height:11px;border-radius:3px;flex:0 0 auto}
+  .ok{color:var(--in)}.high{color:var(--out)}
+  .budget-row{display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
+  .budget-row:last-child{border-bottom:none}
+  .budget-row .bname{font-weight:600;font-size:14px}
+  .budget-row .bspent{font-size:12.5px;color:var(--ink-faint)}
+  .budget-row input{width:118px;text-align:right}
+  .budget-row .btrack{grid-column:1 / -1;height:8px;border-radius:5px;background:var(--surface-2);overflow:hidden}
+  .budget-row .bfill{height:100%;border-radius:5px}
+  .tip{display:flex;gap:12px;padding:12px 14px;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;margin-bottom:10px;background:var(--surface)}
+  .tip .icon{font-size:20px;line-height:1.2;flex:0 0 auto}
+  .tip.warn{border-left-color:var(--out)}
+  .tip.good{border-left-color:var(--in)}
+  .tip .body{font-size:13.5px}
+  .tip .body b{color:var(--ink)}
+  .ef-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px}
+  .ef-field{display:flex;flex-direction:column;gap:4px}
+  .ef-field label{font-size:12px}
+  .ef-field input,.ef-field select{width:150px}
+  .classsel{padding:5px 8px;font-size:12.5px;min-height:auto}
 </style>
 </head>
 <body>
@@ -192,6 +231,7 @@
     <nav class="tabs nav-set">
       <button data-view="dashboard" class="active">Dashboard</button>
       <button data-view="transactions">Transactions</button>
+      <button data-view="coach">Coach</button>
       <button data-view="import">Import</button>
       <button data-view="rules">Rules</button>
       <button data-view="settings">Settings</button>
@@ -226,6 +266,16 @@
       <button id="tx-clearfilters" class="ghost">Clear</button>
     </div>
     <div id="tx-body"></div>
+  </section>
+
+  <!-- COACH -->
+  <section class="view" id="view-coach">
+    <div class="between" style="margin-bottom:14px">
+      <div><h2 class="title">Money Coach</h2><div class="sub">How you're doing against the money basics — for the two of you together.</div></div>
+      <select id="coach-month"></select>
+    </div>
+    <div id="coach-body"></div>
+    <div class="coach-note">General guidance based on your own numbers — not personalised financial advice.</div>
   </section>
 
   <!-- IMPORT -->
@@ -286,6 +336,12 @@
       </div>
     </div>
     <div class="card pad mt">
+      <div class="between">
+        <div><h3>Auto-categorise rules</h3><div class="sub">Keyword → category rules used when importing.</div></div>
+        <button onclick="switchView('rules')">Manage rules →</button>
+      </div>
+    </div>
+    <div class="card pad mt">
       <h3 style="margin-bottom:6px">Backup &amp; restore</h3>
       <div class="sub" style="margin-bottom:14px">Your data lives only on this device. Save a backup to keep it safe or move it between your phone and laptop.</div>
       <div class="row">
@@ -305,9 +361,9 @@
 
 <nav class="bottomnav nav-set">
   <button data-view="dashboard" class="active"><span class="ic">📊</span>Home</button>
-  <button data-view="transactions"><span class="ic">🧾</span>Transactions</button>
+  <button data-view="transactions"><span class="ic">🧾</span>Money</button>
+  <button data-view="coach"><span class="ic">🧭</span>Coach</button>
   <button data-view="import"><span class="ic">⬆️</span>Import</button>
-  <button data-view="rules"><span class="ic">🏷️</span>Rules</button>
   <button data-view="settings"><span class="ic">⚙️</span>Settings</button>
 </nav>
 
@@ -339,8 +395,13 @@ const DEFAULT_RULES=[
   ["FEE","Fees & bank"],["SERVICE CHARGE","Fees & bank"],["BANK CHARGE","Fees & bank"],["MONTHLY ACCOUNT","Fees & bank"],
   ["ATM","Cash"],["CASH WITHDRAW","Cash"],["WITHDRAWAL","Cash"]
 ];
+const DEFAULT_CLASS={"Groceries":"need","Eating out":"want","Transport & fuel":"need","Bills & utilities":"need",
+  "Rent / home":"need","Subscriptions":"want","Shopping":"want","Health":"need","Entertainment":"want",
+  "Savings & transfers":"save","Income":"income","Fees & bank":"need","Cash":"want","Other":"want"};
 function fresh(){return{transactions:[],categories:DEFAULT_CATS.slice(),
-  rules:DEFAULT_RULES.map(r=>({kw:r[0],cat:r[1]})),owners:["Chante","Partner"],bankMaps:{}};}
+  rules:DEFAULT_RULES.map(r=>({kw:r[0],cat:r[1]})),owners:["Chante","Partner"],bankMaps:{},
+  budgets:{},catClass:{},coach:{emergencyFund:0,targetMonths:3}};}
+function getClass(cat){return S.catClass[cat]||DEFAULT_CLASS[cat]||"want";}
 let S=load();
 function load(){try{const r=localStorage.getItem(KEY);if(r){const p=JSON.parse(r);return Object.assign(fresh(),p);}}catch(e){}return fresh();}
 function save(){localStorage.setItem(KEY,JSON.stringify(S));}
@@ -618,9 +679,15 @@ function renderRules(){
 
 /* ---------- settings ---------- */
 function renderSettings(){
-  $("#cat-list").innerHTML=S.categories.map(c=>`<div class="ruleitem">
+  $("#cat-list").innerHTML=`<div class="sub" style="margin-bottom:8px">Tag each as Need / Want / Save — this powers the Coach's 50/30/20 view.</div>`+
+    S.categories.map(c=>`<div class="ruleitem">
     <span class="chipcat" style="background:${catColor(c)}">${esc(c)}</span><span class="grow"></span>
+    <select class="classsel" data-c="${esc(c)}">
+      <option value="need">Need</option><option value="want">Want</option>
+      <option value="save">Save</option><option value="income">Income</option></select>
     <button class="ghost del" data-c="${esc(c)}">✕</button></div>`).join("");
+  $("#cat-list").querySelectorAll(".classsel").forEach(s=>{s.value=getClass(s.dataset.c);
+    s.onchange=()=>{S.catClass[s.dataset.c]=s.value;save();renderCoach();toast("Saved");};});
   $("#cat-list").querySelectorAll(".del").forEach(b=>b.onclick=()=>{
     const c=b.dataset.c;if(S.categories.length<=1)return;
     S.categories=S.categories.filter(x=>x!==c);
@@ -635,6 +702,163 @@ function renderSettings(){
   $("#txcount").textContent=`You have ${S.transactions.length} transaction${S.transactions.length!==1?"s":""} stored.`;
 }
 
+/* ---------- coach ---------- */
+function coachMonths(){const m=monthsList();return m.length?m:[new Date().toISOString().slice(0,7)];}
+function fillCoachMonth(){const sel=$("#coach-month");const cur=sel.value;sel.innerHTML="";
+  for(const k of coachMonths())sel.appendChild(new Option(monthLabel(k),k));
+  if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;}
+function monthStats(month){
+  const tx=S.transactions.filter(t=>monthKey(t.date)===month);
+  let income=0,needs=0,wants=0,save=0;const spentByCat={};
+  for(const t of tx){
+    if(t.amt>0){income+=t.amt;continue;}
+    const a=Math.abs(t.amt);const cls=getClass(t.cat);
+    spentByCat[t.cat]=(spentByCat[t.cat]||0)+a;
+    if(cls==="need")needs+=a;else if(cls==="save")save+=a;else if(cls==="income"){}else wants+=a;
+  }
+  const spend=needs+wants+save;
+  return {month,income,needs,wants,save,spend,net:income-spend,spentByCat,count:tx.length};
+}
+function avgMonthlyNeeds(){
+  const ms=monthsList();if(!ms.length)return 0;
+  let sum=0,n=0;for(const m of ms.slice(0,3)){const s=monthStats(m);if(s.needs>0){sum+=s.needs;n++;}}
+  return n?sum/n:monthStats(ms[0]).needs;
+}
+function pct(part,whole){return whole>0?part/whole:0;}
+function coachScore(s,monthsCovered,target){
+  const sr=s.income>0?(s.income-s.needs-s.wants)/s.income:0;
+  const srScore=Math.max(0,Math.min(1,sr/0.20))*30;
+  const efScore=target>0?Math.max(0,Math.min(1,monthsCovered/target))*20:0;
+  const nPct=pct(s.needs,s.income),wPct=pct(s.wants,s.income);
+  const needScore=s.income>0?Math.max(0,Math.min(1,1-Math.max(0,nPct-0.5)/0.5))*15:0;
+  const wantScore=s.income>0?Math.max(0,Math.min(1,1-Math.max(0,wPct-0.3)/0.3))*15:0;
+  const withinScore=s.income>0?(s.net>=0?20:Math.max(0,20*(1+s.net/s.income))):(s.net>=0?20:0);
+  return {total:Math.round(srScore+efScore+needScore+wantScore+withinScore),sr};
+}
+function coachTips(s,monthsCovered,target,monthlyNeeds){
+  const tips=[];const ef=S.coach.emergencyFund||0;
+  const savings=s.income-s.needs-s.wants;const sr=s.income>0?savings/s.income:0;
+  if(s.income>0&&s.net<0)
+    tips.push(["warn","🚨",`You spent <b>${ZAR(-s.net)}</b> more than you earned this month. First goal: spend less than you earn.`]);
+  if(target>0&&monthsCovered<target&&monthlyNeeds>0){
+    const gap=Math.max(0,target*monthlyNeeds-ef);const per=savings>0?savings:0;
+    const eta=per>0?Math.ceil(gap/per):null;
+    tips.push(["warn","🛟",`Emergency fund: <b>${ef?monthsCovered.toFixed(1):"0"} months</b> of expenses covered (aim for ${target}). About <b>${ZAR(gap)}</b> to go`+(eta?` — roughly ${eta} month${eta!==1?"s":""} at your current saving pace.`:`. Free up some room to save so you can start building it.`)]);
+  }
+  if(s.income>0&&sr<0.20){const short=0.20*s.income-savings;
+    tips.push(["warn","💰",`Savings rate is <b>${Math.round(sr*100)}%</b> (aim for 20%). Putting about <b>${ZAR(short)}</b> more to savings each month — first, on payday — gets you there.`]);}
+  const wPct=pct(s.wants,s.income);
+  if(s.income>0&&wPct>0.30){let bc=null,bv=0;for(const[c,v]of Object.entries(s.spentByCat)){if(getClass(c)==="want"&&v>bv){bv=v;bc=c;}}
+    const free=s.wants-0.30*s.income;
+    tips.push(["","🎯",`Wants are <b>${Math.round(wPct*100)}%</b> of income (target 30%)`+(bc?`, led by <b>${esc(bc)}</b> at ${ZAR(bv)}`:"")+`. Trimming to 30% frees about <b>${ZAR(free)}</b> a month.`]);}
+  const nPct=pct(s.needs,s.income);
+  if(s.income>0&&nPct>0.55)
+    tips.push(["","🏠",`Needs are <b>${Math.round(nPct*100)}%</b> of income — on the high side, which is normal right after buying a home. Hold the line on new fixed costs while the bond settles in.`]);
+  const over=[];for(const[c,lim]of Object.entries(S.budgets)){if(lim>0){const sp=s.spentByCat[c]||0;if(sp>lim)over.push([c,sp-lim]);}}
+  over.sort((a,b)=>b[1]-a[1]).slice(0,2).forEach(([c,d])=>tips.push(["warn","📉",`You're <b>${ZAR(d)}</b> over budget on <b>${esc(c)}</b> this month.`]));
+  if(s.income>0&&sr>=0.20&&(target<=0||monthsCovered>=target))
+    tips.push(["good","🌟",`You're on track — savings and emergency fund are healthy. A strong next move is paying a bit extra into your bond (it saves interest) or starting a long-term investment.`]);
+  if(!tips.length)tips.push(["good","👍",`Looking balanced this month. Keep logging so the picture stays accurate.`]);
+  tips.push(["","🔧",`New-home tip: keep a small maintenance buffer (a common rule of thumb is ~1% of the property value a year) so repairs don't wreck the budget.`]);
+  return tips.slice(0,6);
+}
+function renderCoach(){
+  fillCoachMonth();
+  const body=$("#coach-body");
+  if(!S.transactions.length){body.innerHTML=emptyState("No data yet","The Coach needs your transactions. Import a statement first, then come back.","import","Go to Import");return;}
+  const month=$("#coach-month").value||coachMonths()[0];
+  const s=monthStats(month);
+  const monthlyNeeds=avgMonthlyNeeds()||s.needs;
+  const ef=S.coach.emergencyFund||0,target=S.coach.targetMonths||3;
+  const monthsCovered=(ef>0&&monthlyNeeds>0)?ef/monthlyNeeds:0;
+  const sc=coachScore(s,monthsCovered,target);
+  const band=sc.total>=80?["Excellent","var(--in)","var(--in-soft)","var(--in)"]
+    :sc.total>=60?["Good","var(--accent-ink)","var(--accent-soft)","var(--accent)"]
+    :sc.total>=40?["Getting there","var(--warn)","var(--surface-2)","var(--warn)"]
+    :["Needs work","var(--out)","var(--out-soft)","var(--out)"];
+  const hasIncome=s.income>0;
+  const savingsPart=Math.max(0,s.income-s.needs-s.wants);
+  const base=hasIncome?(s.needs+s.wants+savingsPart||1):(s.spend||1);
+  const w=v=>Math.round(v/base*100);
+  const denom=hasIncome?s.income:s.spend;
+  const nP=Math.round(pct(s.needs,denom)*100),wP=Math.round(pct(s.wants,denom)*100),sP=Math.round(pct(hasIncome?savingsPart:s.save,denom)*100);
+  const cmp=(actual,tgt)=>actual<=tgt?`<span class="ok">${actual}%</span>`:`<span class="high">${actual}%</span>`;
+  const expCats=S.categories.filter(c=>getClass(c)!=="income");
+  body.innerHTML=`
+    <div class="card pad">
+      <div class="coach-head">
+        <div class="ring" style="--p:${sc.total};--ring-color:${band[3]}"><div class="ring-inner"><div class="ring-num">${sc.total}</div><div class="ring-lbl">/ 100</div></div></div>
+        <div style="flex:1;min-width:180px">
+          <span class="band" style="color:${band[1]};background:${band[2]}">${band[0]}</span>
+          <div style="font-size:14px;color:var(--ink-soft)">Your money health for <b>${monthLabel(month)}</b>, across both of you.</div>
+          <div class="row" style="margin-top:12px;gap:22px">
+            <div class="metric"><div class="cap">Money in</div><div class="big pos">${ZAR(s.income)}</div></div>
+            <div class="metric"><div class="cap">Money out</div><div class="big neg">${ZAR(s.spend)}</div></div>
+            <div class="metric"><div class="cap">Net</div><div class="big ${s.net<0?'neg':'pos'}">${ZARsigned(s.net)}</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card pad mt">
+      <div class="between"><h3>The 50 / 30 / 20 split</h3><span class="sub">${hasIncome?"% of income":"% of spending"}</span></div>
+      <div class="split-bar">
+        ${s.needs>0?`<div class="seg need" style="width:${w(s.needs)}%">${w(s.needs)>8?"Needs":""}</div>`:""}
+        ${s.wants>0?`<div class="seg want" style="width:${w(s.wants)}%">${w(s.wants)>8?"Wants":""}</div>`:""}
+        ${(hasIncome?savingsPart:s.save)>0?`<div class="seg save" style="width:${w(hasIncome?savingsPart:s.save)}%">${w(hasIncome?savingsPart:s.save)>8?"Savings":""}</div>`:""}
+      </div>
+      <div class="legend">
+        <span class="k"><span class="sw" style="background:#3b6ea5"></span> Needs ${cmp(nP,50)} <span class="muted">/ 50%</span></span>
+        <span class="k"><span class="sw" style="background:#c07a3e"></span> Wants ${cmp(wP,30)} <span class="muted">/ 30%</span></span>
+        <span class="k"><span class="sw" style="background:var(--in)"></span> Savings <span class="${sP>=20?'ok':'high'}">${sP}%</span> <span class="muted">/ 20%</span></span>
+      </div>
+      ${!hasIncome?`<div class="coach-note" style="color:var(--warn)">No income recorded for ${monthLabel(month)} — import the statement that shows your pay to compare against the 50/30/20 targets.</div>`:""}
+    </div>
+
+    <div class="coach-cols mt">
+      <div class="card pad">
+        <h3 style="margin-bottom:4px">Savings rate</h3>
+        <div class="metric"><div class="big ${sc.sr>=0.20?'pos':''}">${hasIncome?Math.round(sc.sr*100)+"%":"—"}</div></div>
+        <div class="sub">${hasIncome?`of income kept this month · target <b>20%+</b>`:`add income to calculate`}</div>
+        <div class="track" style="margin-top:12px;height:10px;border-radius:6px;background:var(--surface-2);overflow:hidden">
+          <div class="fill" style="height:100%;width:${Math.max(0,Math.min(100,Math.round(sc.sr/0.20*100)))}%;background:var(--in)"></div></div>
+      </div>
+      <div class="card pad">
+        <h3 style="margin-bottom:8px">Emergency fund</h3>
+        <div class="ef-row">
+          <div class="ef-field"><label>Money you have saved (R)</label><input type="number" id="coach-ef" inputmode="decimal" value="${ef||""}" placeholder="0"></div>
+          <div class="ef-field"><label>Target (months)</label>
+            <select id="coach-eftarget">${[3,4,5,6].map(n=>`<option value="${n}" ${n===target?"selected":""}>${n} months</option>`).join("")}</select></div>
+        </div>
+        <div class="sub">Covers <b>${monthlyNeeds>0?(ef/monthlyNeeds||0).toFixed(1):"0"} months</b> of your ~${ZAR(monthlyNeeds)}/mo essentials.</div>
+        <div class="track" style="margin-top:10px;height:10px;border-radius:6px;background:var(--surface-2);overflow:hidden">
+          <div class="fill" style="height:100%;width:${Math.max(0,Math.min(100,Math.round(monthsCovered/target*100)))}%;background:${monthsCovered>=target?'var(--in)':'var(--warn)'}"></div></div>
+      </div>
+    </div>
+
+    <div class="card pad mt">
+      <div class="between"><h3>Budgets — set a monthly cap, see what's left</h3></div>
+      <div class="sub" style="margin-bottom:6px">Leave blank for no limit. Change a number to save it.</div>
+      ${expCats.map(c=>{const sp=s.spentByCat[c]||0;const lim=S.budgets[c]||0;
+        const pctv=lim>0?Math.min(100,sp/lim*100):0;const over=lim>0&&sp>lim;
+        return `<div class="budget-row">
+          <div><span class="bname">${esc(c)}</span> <span class="ownertag" style="margin-left:4px">${getClass(c)}</span><div class="bspent">${ZAR(sp)} spent${lim>0?` · ${over?`<span class="high">${ZAR(sp-lim)} over</span>`:`${ZAR(lim-sp)} left`}`:""}</div></div>
+          <div><input type="number" inputmode="decimal" class="binput" data-cat="${esc(c)}" value="${lim||""}" placeholder="—"></div>
+          ${lim>0?`<div class="btrack"><div class="bfill" style="width:${pctv}%;background:${over?'var(--out)':'var(--in)'}"></div></div>`:""}
+        </div>`;}).join("")}
+    </div>
+
+    <div class="card pad mt">
+      <h3 style="margin-bottom:12px">Your coaching tips</h3>
+      ${coachTips(s,monthsCovered,target,monthlyNeeds).map(([cls,ic,txt])=>`<div class="tip ${cls}"><span class="icon">${ic}</span><div class="body">${txt}</div></div>`).join("")}
+    </div>`;
+  // bindings
+  const efIn=$("#coach-ef");if(efIn)efIn.onchange=()=>{S.coach.emergencyFund=Math.max(0,+efIn.value||0);save();renderCoach();};
+  const efT=$("#coach-eftarget");if(efT)efT.onchange=()=>{S.coach.targetMonths=+efT.value;save();renderCoach();};
+  body.querySelectorAll(".binput").forEach(inp=>inp.onchange=()=>{const c=inp.dataset.cat;const v=+inp.value||0;
+    if(v>0)S.budgets[c]=v;else delete S.budgets[c];save();renderCoach();});
+}
+
 /* ---------- views ---------- */
 function switchView(v){
   document.querySelectorAll(".view").forEach(s=>s.classList.remove("active"));
@@ -642,7 +866,7 @@ function switchView(v){
   document.querySelectorAll(".nav-set button").forEach(b=>b.classList.toggle("active",b.dataset.view===v));
   window.scrollTo(0,0);
 }
-function renderAll(){renderDashboard();renderTransactions();renderRules();renderSettings();}
+function renderAll(){renderDashboard();renderTransactions();renderCoach();renderRules();renderSettings();}
 
 /* ---------- events ---------- */
 document.querySelectorAll(".nav-set").forEach(n=>n.addEventListener("click",e=>{
