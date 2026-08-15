@@ -221,6 +221,9 @@
   .ef-field label{font-size:12px}
   .ef-field input,.ef-field select{width:150px}
   .classsel{padding:5px 8px;font-size:12.5px;min-height:auto}
+  .grouphdr{font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--accent-ink);margin:16px 0 4px;padding-top:8px;border-top:1px solid var(--line);font-weight:700}
+  .grouphdr:first-child{border-top:none;padding-top:0;margin-top:4px}
 </style>
 </head>
 <body>
@@ -373,37 +376,97 @@
 "use strict";
 /* ---------- storage ---------- */
 const KEY="ourmoney.v1";
-const DEFAULT_CATS=["Groceries","Eating out","Transport & fuel","Bills & utilities","Rent / home",
-  "Subscriptions","Shopping","Health","Entertainment","Savings & transfers","Income","Fees & bank","Cash","Internal transfer","Other"];
-const DEFAULT_RULES=[
-  ["WOOLWORTHS","Groceries"],["WOOLIES","Groceries"],["CHECKERS","Groceries"],["PICK N PAY","Groceries"],
-  ["PNP","Groceries"],["SHOPRITE","Groceries"],["SPAR","Groceries"],["FOOD LOVER","Groceries"],["MAKRO","Groceries"],
-  ["UBER EATS","Eating out"],["MR D","Eating out"],["MRD FOOD","Eating out"],["KFC","Eating out"],["NANDOS","Eating out"],
-  ["MCDONALD","Eating out"],["STEERS","Eating out"],["VIDA","Eating out"],["MUGG","Eating out"],["WIMPY","Eating out"],["DEBONAIR","Eating out"],
-  ["ENGEN","Transport & fuel"],["SASOL","Transport & fuel"],["BP ","Transport & fuel"],["SHELL","Transport & fuel"],
-  ["TOTAL","Transport & fuel"],["CALTEX","Transport & fuel"],["UBER","Transport & fuel"],["BOLT","Transport & fuel"],["GAUTRAIN","Transport & fuel"],
-  ["VODACOM","Bills & utilities"],["MTN","Bills & utilities"],["TELKOM","Bills & utilities"],["CELL C","Bills & utilities"],
-  ["RAIN","Bills & utilities"],["ESKOM","Bills & utilities"],["MUNICIPAL","Bills & utilities"],["CITY OF","Bills & utilities"],["AFRIHOST","Bills & utilities"],
-  ["NETFLIX","Subscriptions"],["SPOTIFY","Subscriptions"],["DSTV","Subscriptions"],["SHOWMAX","Subscriptions"],
-  ["APPLE.COM","Subscriptions"],["GOOGLE","Subscriptions"],["YOUTUBE","Subscriptions"],["AMAZON PRIME","Subscriptions"],["MICROSOFT","Subscriptions"],
-  ["TAKEALOT","Shopping"],["MRP","Shopping"],["MR PRICE","Shopping"],["H&M","Shopping"],["ZARA","Shopping"],
-  ["GAME ","Shopping"],["INCREDIBLE","Shopping"],["CLICKS","Health"],["DIS-CHEM","Health"],["DISCHEM","Health"],
-  ["MEDICAL","Health"],["PHARMACY","Health"],["DISCOVERY HEALTH","Health"],["MOMENTUM","Health"],
-  ["NU METRO","Entertainment"],["STER KINEKOR","Entertainment"],["COMPUTICKET","Entertainment"],
-  ["FNB APP","Savings & transfers"],["CAPITEC","Savings & transfers"],["TRANSFER","Savings & transfers"],["EASYEQUITIES","Savings & transfers"],
-  ["SALARY","Income"],["INTEREST","Income"],
-  ["FEE","Fees & bank"],["SERVICE CHARGE","Fees & bank"],["BANK CHARGE","Fees & bank"],["MONTHLY ACCOUNT","Fees & bank"],
-  ["ATM","Cash"],["CASH WITHDRAW","Cash"],["WITHDRAWAL","Cash"]
+// [name, group, class]  — grouped taxonomy
+const CATS=[
+  ["Chanté","Personal","want"],["Jolene","Personal","want"],
+  ["Food & Cleaning Supplies","Groceries","need"],["Toiletries & Hygiene","Groceries","need"],
+  ["Loan / Rent","Home","need"],["Home Extras","Home","want"],["Home Maintenance","Home","need"],
+  ["Rates & Taxes","Home","need"],["Electricity","Home","need"],["Water","Home","need"],["Levies","Home","need"],
+  ["Car Loan","Cars","need"],["Car Maintenance & Rideshare","Cars","need"],["Fuel","Cars","need"],
+  ["Internet","Leisure","need"],["Subscriptions","Leisure","want"],["Leisure Other","Leisure","want"],
+  ["Going Out","Leisure","want"],["Adventures & Holidays","Leisure","want"],["Wellness","Leisure","want"],
+  ["Phones","Other","need"],["Medication","Other","need"],["Doctors & Medical","Other","need"],
+  ["Bank Fees","Other","need"],["Gifts & Unexpected","Other","want"],["Family & Donations","Other","want"],
+  ["Short-Term Insurance","Insurance","need"],["Life Insurance","Insurance","need"],
+  ["Retirement","Savings","save"],["Savings","Savings","save"],["Investments","Savings","save"],
+  ["Income","Income","income"],["Internal Transfer","Transfers","transfer"],["Uncategorised","Other","want"]
 ];
-const DEFAULT_CLASS={"Groceries":"need","Eating out":"want","Transport & fuel":"need","Bills & utilities":"need",
-  "Rent / home":"need","Subscriptions":"want","Shopping":"want","Health":"need","Entertainment":"want",
-  "Savings & transfers":"save","Income":"income","Fees & bank":"need","Cash":"want","Internal transfer":"transfer","Other":"want"};
-function fresh(){return{transactions:[],categories:DEFAULT_CATS.slice(),
-  rules:DEFAULT_RULES.map(r=>({kw:r[0],cat:r[1]})),owners:["Chante","Partner"],bankMaps:{},
+const GROUP_ORDER=["Personal","Groceries","Home","Cars","Leisure","Other","Insurance","Savings","Income","Transfers"];
+const DEFAULT_CATS=CATS.map(c=>c[0]);
+const CAT_GROUP={};CATS.forEach(c=>CAT_GROUP[c[0]]=c[1]);
+const DEFAULT_CLASS={};CATS.forEach(c=>DEFAULT_CLASS[c[0]]=c[2]);
+function groupOf(cat){return CAT_GROUP[cat]||"Other";}
+const DEFAULT_RULES=[
+  ["WOOLWORTHS","Food & Cleaning Supplies"],["WOOLIES","Food & Cleaning Supplies"],["CHECKERS","Food & Cleaning Supplies"],
+  ["PICK N PAY","Food & Cleaning Supplies"],["PNP","Food & Cleaning Supplies"],["SHOPRITE","Food & Cleaning Supplies"],
+  ["SPAR","Food & Cleaning Supplies"],["FOOD LOVER","Food & Cleaning Supplies"],["MAKRO","Food & Cleaning Supplies"],["FRUIT & VEG","Food & Cleaning Supplies"],
+  ["CLICKS","Toiletries & Hygiene"],
+  ["UBER EATS","Going Out"],["MR D","Going Out"],["MRD FOOD","Going Out"],["KFC","Going Out"],["NANDOS","Going Out"],
+  ["MCDONALD","Going Out"],["STEERS","Going Out"],["VIDA","Going Out"],["MUGG","Going Out"],["WIMPY","Going Out"],
+  ["DEBONAIR","Going Out"],["ROMANS PIZZA","Going Out"],["BOOTLEGGER","Going Out"],["RESTAURANT","Going Out"],["COFFEE","Going Out"],["CAFE","Going Out"],
+  ["ENGEN","Fuel"],["SASOL","Fuel"],["SHELL","Fuel"],["CALTEX","Fuel"],["TOTAL","Fuel"],["BP ","Fuel"],
+  ["UBER","Car Maintenance & Rideshare"],["BOLT","Car Maintenance & Rideshare"],["GAUTRAIN","Car Maintenance & Rideshare"],["TYRE","Car Maintenance & Rideshare"],
+  ["VODACOM","Phones"],["MTN","Phones"],["TELKOM","Phones"],["CELL C","Phones"],["RAIN","Phones"],
+  ["AFRIHOST","Internet"],["WEBAFRICA","Internet"],["COOL IDEAS","Internet"],["VOX","Internet"],["FIBRE","Internet"],["VUMATEL","Internet"],
+  ["ESKOM","Electricity"],["PREPAID ELEC","Electricity"],["MUNICIPAL","Rates & Taxes"],["CITY OF","Rates & Taxes"],
+  ["LEVY","Levies"],["LEVIES","Levies"],["BODY CORP","Levies"],
+  ["NETFLIX","Subscriptions"],["SPOTIFY","Subscriptions"],["DSTV","Subscriptions"],["SHOWMAX","Subscriptions"],
+  ["APPLE.COM","Subscriptions"],["GOOGLE","Subscriptions"],["YOUTUBE","Subscriptions"],["AMAZON PRIME","Subscriptions"],["MICROSOFT","Subscriptions"],["ICLOUD","Subscriptions"],
+  ["TAKEALOT","Leisure Other"],["MRP","Leisure Other"],["MR PRICE","Leisure Other"],["H&M","Leisure Other"],["ZARA","Leisure Other"],
+  ["GAME ","Leisure Other"],["INCREDIBLE","Leisure Other"],["NESPRESSO","Leisure Other"],["WALMART","Leisure Other"],
+  ["DIS-CHEM","Medication"],["DISCHEM","Medication"],["PHARMACY","Medication"],["MEDIRITE","Medication"],
+  ["DENTIST","Doctors & Medical"],["DOCTOR","Doctors & Medical"],
+  ["PHYSIOTH","Wellness"],["PHYSIO","Wellness"],["VIRGIN ACTIVE","Wellness"],["PLANET FITNESS","Wellness"],["GYM","Wellness"],["WELLNESS","Wellness"],
+  ["NU METRO","Going Out"],["STER KINEKOR","Going Out"],["COMPUTICKET","Adventures & Holidays"],["AIRBNB","Adventures & Holidays"],["BOOKING.COM","Adventures & Holidays"],["FLIGHT","Adventures & Holidays"],
+  ["DISCOVERY HEALTH","Short-Term Insurance"],["MEDICAL AID","Short-Term Insurance"],["MOMENTUM HEALTH","Short-Term Insurance"],["GAP COVER","Short-Term Insurance"],
+  ["OUTSURANCE","Short-Term Insurance"],["MIWAY","Short-Term Insurance"],["SANTAM","Short-Term Insurance"],["KING PRICE","Short-Term Insurance"],["NAKED","Short-Term Insurance"],["INSURANCE","Short-Term Insurance"],
+  ["LIBERTY","Life Insurance"],["OLD MUTUAL","Life Insurance"],["SANLAM","Life Insurance"],["1LIFE","Life Insurance"],["ONE LIFE","Life Insurance"],["LIFE COVER","Life Insurance"],["MOMENTUM","Life Insurance"],
+  ["EASYEQUITIES","Investments"],["SATRIX","Investments"],["ALLAN GRAY","Investments"],["10X","Retirement"],["RETIREMENT ANNUITY","Retirement"],
+  ["BANK U KLEINGELD","Savings"],["ROUND-UP","Savings"],
+  ["FAMILY CARE","Family & Donations"],["DONATION","Family & Donations"],["CHURCH","Family & Donations"],["TITHE","Family & Donations"],
+  ["SALARY","Income"],["SALARIS","Income"],["INTEREST","Income"],["RENTE","Income"],
+  ["FOOI","Bank Fees"],["DIENSFOOI","Bank Fees"],["DIENS FOOI","Bank Fees"],["BANKKOSTE","Bank Fees"],["FEE","Bank Fees"],
+  ["SERVICE CHARGE","Bank Fees"],["BANK CHARGE","Bank Fees"],["MONTHLY ACCOUNT","Bank Fees"],["MAGBAND","Bank Fees"],["ADVICE FEE","Bank Fees"],
+  ["CREDIT SETTLEMENT","Internal Transfer"],["RENT CAR","Internal Transfer"],["FNBCC","Internal Transfer"],["PAYMENT THANK YOU","Internal Transfer"]
+];
+const CAT_MIGRATE={
+  "Groceries":"Food & Cleaning Supplies","Eating out":"Going Out","Transport & fuel":"Fuel",
+  "Bills & utilities":"Electricity","Rent / home":"Loan / Rent","Subscriptions":"Subscriptions",
+  "Shopping":"Leisure Other","Health":"Doctors & Medical","Entertainment":"Going Out",
+  "Savings & transfers":"Savings","Income":"Income","Fees & bank":"Bank Fees","Cash":"Uncategorised",
+  "Internal transfer":"Internal Transfer","Other":"Uncategorised"
+};
+function fresh(){return{version:2,transactions:[],categories:DEFAULT_CATS.slice(),
+  rules:DEFAULT_RULES.map(r=>({kw:r[0],cat:r[1]})),owners:["Chanté","Jolene"],bankMaps:{},
   budgets:{},catClass:{},coach:{emergencyFund:0,targetMonths:3}};}
 function getClass(cat){return S.catClass[cat]||DEFAULT_CLASS[cat]||"want";}
 let S=load();
-function load(){try{const r=localStorage.getItem(KEY);if(r){const p=JSON.parse(r);return Object.assign(fresh(),p);}}catch(e){}return fresh();}
+function load(){let p=null;try{const r=localStorage.getItem(KEY);if(r)p=JSON.parse(r);}catch(e){}
+  if(!p)return fresh();
+  const s=Object.assign(fresh(),p);
+  if(p.version!==2)migrate(s,p);
+  return s;}
+function migrate(s,p){
+  const custom=new Set((p.categories||[]).filter(c=>!DEFAULT_CLASS[c]&&!CAT_MIGRATE[c]));
+  const mapCat=c=>CAT_MIGRATE[c]||(DEFAULT_CLASS[c]?c:(custom.has(c)?c:"Uncategorised"));
+  (s.transactions||[]).forEach(t=>{t.cat=mapCat(t.cat);});
+  const nb={};for(const[c,v]of Object.entries(p.budgets||{}))nb[mapCat(c)]=v;s.budgets=nb;
+  s.categories=DEFAULT_CATS.concat([...custom]);
+  s.catClass={};
+  if(JSON.stringify(p.owners||["Chante","Partner"])===JSON.stringify(["Chante","Partner"])){
+    s.owners=["Chanté","Jolene"];
+    (s.transactions||[]).forEach(t=>{if(t.owner==="Chante")t.owner="Chanté";else if(t.owner==="Partner")t.owner="Jolene";});
+  }
+  s.rules=(p.rules||[]).map(r=>({kw:r.kw,cat:mapCat(r.cat)}));
+  const have=new Set(s.rules.map(r=>(r.kw||"").toUpperCase()));
+  DEFAULT_RULES.forEach(([kw,cat])=>{if(!have.has(kw.toUpperCase()))s.rules.push({kw,cat});});
+  s.version=2;
+  try{localStorage.setItem(KEY,JSON.stringify(s));}catch(e){}
+}
+function catOptGroups(selected){let html="";
+  for(const g of GROUP_ORDER){const cs=S.categories.filter(c=>groupOf(c)===g);if(!cs.length)continue;
+    html+=`<optgroup label="${esc(g)}">`+cs.map(c=>`<option ${c===selected?"selected":""}>${esc(c)}</option>`).join("")+`</optgroup>`;}
+  return html;}
 function save(){localStorage.setItem(KEY,JSON.stringify(S));}
 
 /* ---------- helpers ---------- */
@@ -674,10 +737,9 @@ function fillOwnerSelect(sel){const cur=sel.value;sel.innerHTML="";
   for(const o of S.owners)sel.appendChild(new Option(o,o));
   sel.appendChild(new Option("Joint","Joint"));
   if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;}
-function fillCatSelect(sel,withAll){const cur=sel.value;sel.innerHTML="";
-  if(withAll)sel.appendChild(new Option("All categories","all"));
-  for(const c of S.categories)sel.appendChild(new Option(c,c));
-  if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;}
+function fillCatSelect(sel,withAll){const cur=sel.value;
+  sel.innerHTML=(withAll?`<option value="all">All categories</option>`:"")+catOptGroups(null);
+  if(cur&&[...sel.querySelectorAll("option")].some(o=>o.value===cur))sel.value=cur;}
 
 /* ---------- dashboard ---------- */
 function renderDashboard(){
@@ -744,7 +806,7 @@ function renderTransactions(){
   if(q)tx=tx.filter(t=>t.desc.toLowerCase().includes(q)||t.cat.toLowerCase().includes(q));
   const body=$("#tx-body");
   if(!S.transactions.length){body.innerHTML=emptyState("No transactions yet","Import a CSV bank statement to see your transactions here.","import","Go to Import");return;}
-  const catOpts=c=>S.categories.map(x=>`<option ${x===c?"selected":""}>${esc(x)}</option>`).join("");
+  const catOpts=c=>catOptGroups(c);
   body.innerHTML=`<div class="sub" style="margin-bottom:10px">${tx.length} shown</div>
   <div class="card txlist">
     <div class="txhead">
@@ -780,20 +842,23 @@ function renderRules(){
 
 /* ---------- settings ---------- */
 function renderSettings(){
-  $("#cat-list").innerHTML=`<div class="sub" style="margin-bottom:8px">Tag each as Need / Want / Save (powers the Coach's 50/30/20 view). Use <b>Transfer</b> for money moving between your own or each other's accounts — it's ignored in all totals so nothing gets double-counted.</div>`+
-    S.categories.map(c=>`<div class="ruleitem">
+  const catRow=c=>`<div class="ruleitem">
     <span class="chipcat" style="background:${catColor(c)}">${esc(c)}</span><span class="grow"></span>
     <select class="classsel" data-c="${esc(c)}">
       <option value="need">Need</option><option value="want">Want</option>
       <option value="save">Save</option><option value="transfer">Transfer</option><option value="income">Income</option></select>
-    <button class="ghost del" data-c="${esc(c)}">✕</button></div>`).join("");
+    <button class="ghost del" data-c="${esc(c)}">✕</button></div>`;
+  let html=`<div class="sub" style="margin-bottom:10px">Grouped for clarity. Tag each as Need / Want / Save (powers the Coach's 50/30/20). Use <b>Transfer</b> for money moving between your own or each other's accounts — it's left out of all totals so nothing double-counts.</div>`;
+  for(const g of GROUP_ORDER){const cs=S.categories.filter(c=>groupOf(c)===g);if(!cs.length)continue;
+    html+=`<div class="grouphdr">${esc(g)}</div>`+cs.map(catRow).join("");}
+  $("#cat-list").innerHTML=html;
   $("#cat-list").querySelectorAll(".classsel").forEach(s=>{s.value=getClass(s.dataset.c);
     s.onchange=()=>{S.catClass[s.dataset.c]=s.value;save();renderCoach();toast("Saved");};});
   $("#cat-list").querySelectorAll(".del").forEach(b=>b.onclick=()=>{
     const c=b.dataset.c;if(S.categories.length<=1)return;
     S.categories=S.categories.filter(x=>x!==c);
-    S.transactions.forEach(t=>{if(t.cat===c)t.cat="Other";});
-    if(!S.categories.includes("Other"))S.categories.push("Other");
+    S.transactions.forEach(t=>{if(t.cat===c)t.cat="Uncategorised";});
+    if(!S.categories.includes("Uncategorised"))S.categories.push("Uncategorised");
     save();renderAll();});
   $("#owner-list").innerHTML=S.owners.map(o=>`<div class="ruleitem">
     <span>${esc(o)}</span><span class="grow"></span>
@@ -942,13 +1007,14 @@ function renderCoach(){
     <div class="card pad mt">
       <div class="between"><h3>Budgets — set a monthly cap, see what's left</h3></div>
       <div class="sub" style="margin-bottom:6px">Leave blank for no limit. Change a number to save it.</div>
-      ${expCats.map(c=>{const sp=s.spentByCat[c]||0;const lim=S.budgets[c]||0;
-        const pctv=lim>0?Math.min(100,sp/lim*100):0;const over=lim>0&&sp>lim;
-        return `<div class="budget-row">
-          <div><span class="bname">${esc(c)}</span> <span class="ownertag" style="margin-left:4px">${getClass(c)}</span><div class="bspent">${ZAR(sp)} spent${lim>0?` · ${over?`<span class="high">${ZAR(sp-lim)} over</span>`:`${ZAR(lim-sp)} left`}`:""}</div></div>
-          <div><input type="number" inputmode="decimal" class="binput" data-cat="${esc(c)}" value="${lim||""}" placeholder="—"></div>
-          ${lim>0?`<div class="btrack"><div class="bfill" style="width:${pctv}%;background:${over?'var(--out)':'var(--in)'}"></div></div>`:""}
-        </div>`;}).join("")}
+      ${GROUP_ORDER.map(g=>{const cs=expCats.filter(c=>groupOf(c)===g);if(!cs.length)return"";
+        return `<div class="grouphdr">${esc(g)}</div>`+cs.map(c=>{const sp=s.spentByCat[c]||0;const lim=S.budgets[c]||0;
+          const pctv=lim>0?Math.min(100,sp/lim*100):0;const over=lim>0&&sp>lim;
+          return `<div class="budget-row">
+            <div><span class="bname">${esc(c)}</span><div class="bspent">${ZAR(sp)} spent${lim>0?` · ${over?`<span class="high">${ZAR(sp-lim)} over</span>`:`${ZAR(lim-sp)} left`}`:""}</div></div>
+            <div><input type="number" inputmode="decimal" class="binput" data-cat="${esc(c)}" value="${lim||""}" placeholder="—"></div>
+            ${lim>0?`<div class="btrack"><div class="bfill" style="width:${pctv}%;background:${over?'var(--out)':'var(--in)'}"></div></div>`:""}
+          </div>`;}).join("");}).join("")}
     </div>
 
     <div class="card pad mt">
