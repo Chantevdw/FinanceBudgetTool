@@ -221,6 +221,7 @@
   .ef-field label{font-size:12px}
   .ef-field input,.ef-field select{width:150px}
   .classsel{padding:5px 8px;font-size:12.5px;min-height:auto}
+  .tdate{font-size:12.5px;padding:5px 7px;min-height:auto;width:100%;max-width:160px;border-color:var(--line);background:transparent}
   .grouphdr{font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
     color:var(--accent-ink);margin:16px 0 4px;padding-top:8px;border-top:1px solid var(--line);font-weight:700}
   .grouphdr:first-child{border-top:none;padding-top:0;margin-top:4px}
@@ -323,8 +324,15 @@
     <div class="split">
       <div class="card pad">
         <h3 style="margin-bottom:10px">Categories</h3>
-        <div class="row" style="margin-bottom:12px">
-          <input type="text" id="cat-new" placeholder="New category" class="grow">
+        <div class="row" style="margin-bottom:6px">
+          <input type="text" id="cat-new" placeholder="New category name" class="grow">
+        </div>
+        <div class="row" style="margin-bottom:14px">
+          <select id="cat-new-group" class="grow"></select>
+          <select id="cat-new-class">
+            <option value="need">Need</option><option value="want" selected>Want</option>
+            <option value="save">Save</option><option value="transfer">Transfer</option>
+          </select>
           <button id="cat-add" class="primary">Add</button>
         </div>
         <div id="cat-list"></div>
@@ -395,7 +403,7 @@ const GROUP_ORDER=["Personal","Groceries","Home","Cars","Leisure","Other","Insur
 const DEFAULT_CATS=CATS.map(c=>c[0]);
 const CAT_GROUP={};CATS.forEach(c=>CAT_GROUP[c[0]]=c[1]);
 const DEFAULT_CLASS={};CATS.forEach(c=>DEFAULT_CLASS[c[0]]=c[2]);
-function groupOf(cat){return CAT_GROUP[cat]||"Other";}
+function groupOf(cat){return (S&&S.catGroup&&S.catGroup[cat])||CAT_GROUP[cat]||"Other";}
 const DEFAULT_RULES=[
   ["WOOLWORTHS","Food & Cleaning Supplies"],["WOOLIES","Food & Cleaning Supplies"],["CHECKERS","Food & Cleaning Supplies"],
   ["PICK N PAY","Food & Cleaning Supplies"],["PNP","Food & Cleaning Supplies"],["SHOPRITE","Food & Cleaning Supplies"],
@@ -436,16 +444,23 @@ const CAT_MIGRATE={
   "Savings & transfers":"Savings","Income":"Income","Fees & bank":"Bank Fees","Cash":"Uncategorised",
   "Internal transfer":"Internal Transfer","Other":"Uncategorised"
 };
-function fresh(){return{version:2,transactions:[],categories:DEFAULT_CATS.slice(),
+function fresh(){return{version:3,transactions:[],categories:DEFAULT_CATS.slice(),
   rules:DEFAULT_RULES.map(r=>({kw:r[0],cat:r[1]})),owners:["Chanté","Jolene"],bankMaps:{},
-  budgets:{},catClass:{},coach:{emergencyFund:0,targetMonths:3}};}
+  budgets:{},catClass:{},catGroup:{},coach:{emergencyFund:0,targetMonths:3}};}
 function getClass(cat){return S.catClass[cat]||DEFAULT_CLASS[cat]||"want";}
 let S=load();
 function load(){let p=null;try{const r=localStorage.getItem(KEY);if(r)p=JSON.parse(r);}catch(e){}
   if(!p)return fresh();
   const s=Object.assign(fresh(),p);
-  if(p.version!==2)migrate(s,p);
+  let changed=false;
+  if((p.version||0)<2){migrate(s,p);changed=true;}
+  if((s.version||0)<3){repairDates(s);s.version=3;changed=true;}
+  if(changed)try{localStorage.setItem(KEY,JSON.stringify(s));}catch(e){}
   return s;}
+function repairDates(s){let n=0;(s.transactions||[]).forEach(t=>{
+  const m=/^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t.date||"");
+  if(m){const mo=+m[2],d=+m[3];if(mo>12&&d<=12){t.date=`${m[1]}-${p2(d)}-${p2(mo)}`;n++;}}});
+  return n;}
 function migrate(s,p){
   const custom=new Set((p.categories||[]).filter(c=>!DEFAULT_CLASS[c]&&!CAT_MIGRATE[c]));
   const mapCat=c=>CAT_MIGRATE[c]||(DEFAULT_CLASS[c]?c:(custom.has(c)?c:"Uncategorised"));
@@ -461,7 +476,6 @@ function migrate(s,p){
   const have=new Set(s.rules.map(r=>(r.kw||"").toUpperCase()));
   DEFAULT_RULES.forEach(([kw,cat])=>{if(!have.has(kw.toUpperCase()))s.rules.push({kw,cat});});
   s.version=2;
-  try{localStorage.setItem(KEY,JSON.stringify(s));}catch(e){}
 }
 function catOptGroups(selected){let html="";
   for(const g of GROUP_ORDER){const cs=S.categories.filter(c=>groupOf(c)===g);if(!cs.length)continue;
@@ -477,10 +491,13 @@ function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");cl
 function catColor(cat){const i=Math.max(0,S.categories.indexOf(cat));return`var(--cat${i%10})`;}
 function monthKey(d){return d.slice(0,7);}
 function monthLabel(k){if(k==="all")return"All months";const[y,m]=k.split("-");
-  return["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m-1]+" "+y;}
+  const nm=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m-1];
+  return nm?nm+" "+y:k;}
 function hash(str){let h=0;for(let i=0;i<str.length;i++){h=(h<<5)-h+str.charCodeAt(i);h|=0;}return h.toString(36);}
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
-function categorise(desc){const d=desc.toUpperCase();for(const r of S.rules){if(r.kw&&d.includes(r.kw.toUpperCase()))return r.cat;}return "Other";}
+function categorise(desc){const d=(desc||"").toUpperCase();for(const r of S.rules){if(r.kw&&d.includes(r.kw.toUpperCase()))return r.cat;}return "Uncategorised";}
+// build a YYYY-MM-DD date, auto-correcting a swapped day/month (month can never be >12)
+function mkDate(y,mo,d){mo=+mo;d=+d;if(mo>12&&d<=12){const t=mo;mo=d;d=t;}return `${y}-${p2(mo)}-${p2(d)}`;}
 
 /* ---------- CSV parsing ---------- */
 function parseCSV(text){
@@ -499,12 +516,12 @@ function parseCSV(text){
 function p2(x){x=String(x);return x.length<2?"0"+x:x;}
 function parseDate(s){
   s=(s||"").trim();if(!s)return null;let m;
-  if(m=s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/))return`${m[1]}-${p2(m[2])}-${p2(m[3])}`;
-  if(m=s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/))return`${m[3]}-${p2(m[2])}-${p2(m[1])}`;
-  if(m=s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2})$/)){const y=+m[3]<70?"20"+m[3]:"19"+m[3];return`${y}-${p2(m[2])}-${p2(m[1])}`;}
+  if(m=s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/))return mkDate(m[1],m[2],m[3]);
+  if(m=s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/))return mkDate(m[3],m[2],m[1]);
+  if(m=s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2})$/)){const y=+m[3]<70?"20"+m[3]:"19"+m[3];return mkDate(y,m[2],m[1]);}
   const mon={jan:"01",feb:"02",mar:"03",apr:"04",may:"05",jun:"06",jul:"07",aug:"08",sep:"09",oct:"10",nov:"11",dec:"12"};
   if(m=s.match(/^(\d{1,2})\s*([A-Za-z]{3})[A-Za-z]*\s*(\d{2,4})/)){const mm=mon[m[2].toLowerCase()];
-    if(mm){let y=m[3];if(y.length===2)y=+y<70?"20"+y:"19"+y;return`${y}-${mm}-${p2(m[1])}`;}}
+    if(mm){let y=m[3];if(y.length===2)y=+y<70?"20"+y:"19"+y;return mkDate(y,mm,m[1]);}}
   const d=new Date(s);if(!isNaN(d))return d.toISOString().slice(0,10);
   return null;
 }
@@ -670,7 +687,7 @@ function pdfParseCurrent(lines,full){
     const am=prefix.match(/([\d,]+\.\d{2})\s*(Kt|Dt)?\s*$/);if(!am)continue;
     const amt=(am[2]==="Kt")?Math.abs(PN(am[1])):-Math.abs(PN(am[1]));
     const desc=prefix.slice(0,am.index).replace(/^\d{1,2}\s+[A-Za-z]{3}\s*/,"").trim();
-    tx.push({date:`${yr(mon)}-${p2(PDF_MON[mon])}-${p2(+dm[1])}`,desc,amt});
+    tx.push({date:mkDate(yr(mon),PDF_MON[mon],+dm[1]),desc,amt});
   }
   const op=full.match(/Openingsaldo\s+([\d,]+\.\d{2})/i),cl=full.match(/Afsluitingsaldo\s+([\d,]+\.\d{2})/i);
   return{tx,opening:op?PN(op[1]):null,closing:cl?PN(cl[1]):null};
@@ -684,7 +701,7 @@ function pdfParseCard(lines,full){
     const dm=line.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(.*?)\s*(\d{1,3}(?: \d{3})*\.\d{2})\s*(Cr)?\s*$/);
     if(!dm)continue;const mon=dm[2].toLowerCase();if(!(mon in PDF_MON))continue;
     const amt=(dm[5]==="Cr")?Math.abs(PN(dm[4])):-Math.abs(PN(dm[4]));
-    tx.push({date:`${yr(mon)}-${p2(PDF_MON[mon])}-${p2(+dm[1])}`,desc:dm[3].trim(),amt});
+    tx.push({date:mkDate(yr(mon),PDF_MON[mon],+dm[1]),desc:dm[3].trim(),amt});
   }
   const op=full.match(/Opening Balance\s+([\d, ]+\.\d{2})/i),cl=full.match(/Closing Balance\s+([\d, ]+\.\d{2})\s*(Cr)?/i);
   return{tx,opening:op?PN(op[1]):null,closing:cl?(cl[2]?-PN(cl[1]):PN(cl[1])):null};
@@ -814,7 +831,7 @@ function renderTransactions(){
       <span class="c-cat">Category</span><span class="c-amt" style="text-align:right">Amount</span><span class="c-del"></span>
     </div>
     ${tx.map(t=>`<div class="txrow">
-      <span class="c-date mono">${t.date}</span>
+      <span class="c-date"><input type="date" class="tdate mono" data-id="${t.id}" value="${/^\d{4}-\d{2}-\d{2}$/.test(t.date)?t.date:""}"></span>
       <span class="c-desc" title="${esc(t.desc)}">${esc(t.desc)}</span>
       <span class="c-owner"><span class="ownertag">${esc(t.owner)}</span></span>
       <span class="c-cat"><select class="catsel" data-id="${t.id}">${catOpts(t.cat)}</select></span>
@@ -822,6 +839,8 @@ function renderTransactions(){
       <span class="c-del"><button class="ghost del" data-id="${t.id}" title="Delete">✕</button></span>
     </div>`).join("")}
   </div>`;
+  body.querySelectorAll(".tdate").forEach(inp=>inp.onchange=()=>{
+    const t=S.transactions.find(x=>x.id===inp.dataset.id);if(t&&inp.value){t.date=inp.value;save();renderAll();toast("Date updated");}});
   body.querySelectorAll(".catsel").forEach(s=>s.onchange=()=>{
     const t=S.transactions.find(x=>x.id===s.dataset.id);if(t){t.cat=s.value;save();toast("Category updated");}});
   body.querySelectorAll(".del").forEach(b=>b.onclick=()=>{
@@ -842,6 +861,7 @@ function renderRules(){
 
 /* ---------- settings ---------- */
 function renderSettings(){
+  const gsel=$("#cat-new-group");if(gsel&&!gsel.options.length)gsel.innerHTML=GROUP_ORDER.map(g=>`<option>${esc(g)}</option>`).join("");
   const catRow=c=>`<div class="ruleitem">
     <span class="chipcat" style="background:${catColor(c)}">${esc(c)}</span><span class="grow"></span>
     <select class="classsel" data-c="${esc(c)}">
@@ -1054,7 +1074,8 @@ $("#rule-add").onclick=()=>{const kw=$("#rule-kw").value.trim();const cat=$("#ru
 $("#rule-recat").onclick=()=>{let n=0;S.transactions.forEach(t=>{const c=categorise(t.desc);if(c!==t.cat){t.cat=c;n++;}});
   save();renderAll();toast(`Re-categorised ${n} transaction${n!==1?"s":""}.`);};
 $("#cat-add").onclick=()=>{const c=$("#cat-new").value.trim();if(!c||S.categories.includes(c))return;
-  S.categories.push(c);$("#cat-new").value="";save();renderAll();};
+  S.categories.push(c);S.catGroup[c]=$("#cat-new-group").value||"Other";S.catClass[c]=$("#cat-new-class").value||"want";
+  $("#cat-new").value="";save();renderAll();toast("Category added");};
 $("#owner-add").onclick=()=>{const o=$("#owner-new").value.trim();if(!o||S.owners.includes(o))return;
   S.owners.push(o);$("#owner-new").value="";save();renderAll();};
 $("#backup").onclick=()=>{const blob=new Blob([JSON.stringify(S,null,2)],{type:"application/json"});
