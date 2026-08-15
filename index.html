@@ -268,6 +268,7 @@
       <select id="tx-owner"></select>
       <select id="tx-cat"></select>
       <button id="tx-clearfilters" class="ghost">Clear</button>
+      <button id="tx-delshown" class="danger">Delete shown</button>
     </div>
     <div id="tx-body"></div>
   </section>
@@ -531,6 +532,7 @@ function num(s){if(s==null)return NaN;s=String(s).replace(/[R\s,]/g,"").replace(
 
 /* ---------- import flow ---------- */
 let pending=null;
+let _shownIds=[];
 function handleFile(file){
   const name=(file.name||"").toLowerCase();
   if(name.endsWith(".pdf")||file.type==="application/pdf"){handlePdf(file);return;}
@@ -675,21 +677,26 @@ async function pdfLines(file){
   }
   return out;
 }
-function pdfDetect(full){if(/credit card|kredietkaart/i.test(full))return"card";if(/vaste deposito|fixed deposit/i.test(full))return"fixed";return"current";}
+function pdfDetect(full){
+  if(/transaksies in rand|transactions in rand/i.test(full))return"current";
+  if(/credit card|kredietkaart|payment due date/i.test(full))return"card";
+  if(/vaste deposito|fixed deposit/i.test(full))return"fixed";
+  return"current";}
 function pdfParseCurrent(lines,full){
-  const per=full.match(/Periode\s*:?\s*(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})[\s\S]*?(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/i);
+  const per=full.match(/Peri(?:ode|od)\s*:?\s*(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})[\s\S]*?(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/i);
   const sM=per?per[2].toLowerCase().slice(0,3):null,sY=per?+per[3]:null,eY=per?+per[6]:null;
   const yr=m=>sY&&PDF_MON[m]===PDF_MON[sM]?sY:(eY||new Date().getFullYear());
   const tx=[];
   for(const line of lines){
     const dm=line.match(/^(\d{1,2})\s+([A-Za-z]{3})\b/);if(!dm)continue;const mon=dm[2].toLowerCase();if(!(mon in PDF_MON))continue;
-    const bal=line.match(/^(.+?)\s+([\d,]+\.\d{2})\s*(Kt|Dt)\s*$/);if(!bal)continue;const prefix=bal[1];
-    const am=prefix.match(/([\d,]+\.\d{2})\s*(Kt|Dt)?\s*$/);if(!am)continue;
-    const amt=(am[2]==="Kt")?Math.abs(PN(am[1])):-Math.abs(PN(am[1]));
+    const bal=line.match(/^(.+?)\s+([\d,]+\.\d{2})\s*(Kt|Dt|Cr|Dr)\s*$/i);if(!bal)continue;const prefix=bal[1];
+    const am=prefix.match(/([\d,]+\.\d{2})\s*(Kt|Dt|Cr|Dr)?\s*$/i);if(!am)continue;
+    const suf=(am[2]||"").toLowerCase();
+    const amt=(suf==="kt"||suf==="cr")?Math.abs(PN(am[1])):-Math.abs(PN(am[1]));
     const desc=prefix.slice(0,am.index).replace(/^\d{1,2}\s+[A-Za-z]{3}\s*/,"").trim();
     tx.push({date:mkDate(yr(mon),PDF_MON[mon],+dm[1]),desc,amt});
   }
-  const op=full.match(/Openingsaldo\s+([\d,]+\.\d{2})/i),cl=full.match(/Afsluitingsaldo\s+([\d,]+\.\d{2})/i);
+  const op=full.match(/(?:Openingsaldo|Opening Balance)\s+([\d,]+\.\d{2})/i),cl=full.match(/(?:Afsluitingsaldo|Closing Balance)\s+([\d,]+\.\d{2})/i);
   return{tx,opening:op?PN(op[1]):null,closing:cl?PN(cl[1]):null};
 }
 function pdfParseCard(lines,full){
@@ -824,6 +831,7 @@ function renderTransactions(){
   const body=$("#tx-body");
   if(!S.transactions.length){body.innerHTML=emptyState("No transactions yet","Import a CSV bank statement to see your transactions here.","import","Go to Import");return;}
   const catOpts=c=>catOptGroups(c);
+  _shownIds=tx.map(t=>t.id);
   body.innerHTML=`<div class="sub" style="margin-bottom:10px">${tx.length} shown</div>
   <div class="card txlist">
     <div class="txhead">
@@ -1063,6 +1071,9 @@ document.querySelectorAll(".nav-set").forEach(n=>n.addEventListener("click",e=>{
 $("#dash-month").onchange=renderDashboard;$("#dash-owner").onchange=renderDashboard;
 ["#tx-search","#tx-month","#tx-owner","#tx-cat"].forEach(s=>{const e=$(s);e.oninput=renderTransactions;e.onchange=renderTransactions;});
 $("#tx-clearfilters").onclick=()=>{$("#tx-search").value="";$("#tx-month").value="all";$("#tx-owner").value="all";$("#tx-cat").value="all";renderTransactions();};
+$("#tx-delshown").onclick=()=>{const ids=_shownIds||[];if(!ids.length){toast("Nothing shown to delete.");return;}
+  if(confirm(`Delete the ${ids.length} transaction${ids.length!==1?"s":""} currently shown? This can't be undone — filter first to target a specific batch.`)){
+    const set=new Set(ids);S.transactions=S.transactions.filter(t=>!set.has(t.id));save();renderAll();toast("Deleted "+ids.length);}};
 $("#pickfile").onclick=()=>$("#fileinput").click();
 $("#fileinput").onchange=e=>{if(e.target.files[0])handleFile(e.target.files[0]);e.target.value="";};
 const drop=$("#drop");
