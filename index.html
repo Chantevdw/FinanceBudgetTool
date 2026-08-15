@@ -374,7 +374,7 @@
 /* ---------- storage ---------- */
 const KEY="ourmoney.v1";
 const DEFAULT_CATS=["Groceries","Eating out","Transport & fuel","Bills & utilities","Rent / home",
-  "Subscriptions","Shopping","Health","Entertainment","Savings & transfers","Income","Fees & bank","Cash","Other"];
+  "Subscriptions","Shopping","Health","Entertainment","Savings & transfers","Income","Fees & bank","Cash","Internal transfer","Other"];
 const DEFAULT_RULES=[
   ["WOOLWORTHS","Groceries"],["WOOLIES","Groceries"],["CHECKERS","Groceries"],["PICK N PAY","Groceries"],
   ["PNP","Groceries"],["SHOPRITE","Groceries"],["SPAR","Groceries"],["FOOD LOVER","Groceries"],["MAKRO","Groceries"],
@@ -397,7 +397,7 @@ const DEFAULT_RULES=[
 ];
 const DEFAULT_CLASS={"Groceries":"need","Eating out":"want","Transport & fuel":"need","Bills & utilities":"need",
   "Rent / home":"need","Subscriptions":"want","Shopping":"want","Health":"need","Entertainment":"want",
-  "Savings & transfers":"save","Income":"income","Fees & bank":"need","Cash":"want","Other":"want"};
+  "Savings & transfers":"save","Income":"income","Fees & bank":"need","Cash":"want","Internal transfer":"transfer","Other":"want"};
 function fresh(){return{transactions:[],categories:DEFAULT_CATS.slice(),
   rules:DEFAULT_RULES.map(r=>({kw:r[0],cat:r[1]})),owners:["Chante","Partner"],bankMaps:{},
   budgets:{},catClass:{},coach:{emergencyFund:0,targetMonths:3}};}
@@ -582,7 +582,7 @@ function fillCatSelect(sel,withAll){const cur=sel.value;sel.innerHTML="";
 function renderDashboard(){
   fillMonthSelect($("#dash-month"),true);fillOwnerSelect($("#dash-owner"));
   const month=$("#dash-month").value||"all";const owner=$("#dash-owner").value||"all";
-  let tx=S.transactions.slice();
+  let tx=S.transactions.slice().filter(t=>getClass(t.cat)!=="transfer");
   if(month!=="all")tx=tx.filter(t=>monthKey(t.date)===month);
   if(owner!=="all")tx=tx.filter(t=>t.owner===owner);
   const body=$("#dash-body");
@@ -679,12 +679,12 @@ function renderRules(){
 
 /* ---------- settings ---------- */
 function renderSettings(){
-  $("#cat-list").innerHTML=`<div class="sub" style="margin-bottom:8px">Tag each as Need / Want / Save — this powers the Coach's 50/30/20 view.</div>`+
+  $("#cat-list").innerHTML=`<div class="sub" style="margin-bottom:8px">Tag each as Need / Want / Save (powers the Coach's 50/30/20 view). Use <b>Transfer</b> for money moving between your own or each other's accounts — it's ignored in all totals so nothing gets double-counted.</div>`+
     S.categories.map(c=>`<div class="ruleitem">
     <span class="chipcat" style="background:${catColor(c)}">${esc(c)}</span><span class="grow"></span>
     <select class="classsel" data-c="${esc(c)}">
       <option value="need">Need</option><option value="want">Want</option>
-      <option value="save">Save</option><option value="income">Income</option></select>
+      <option value="save">Save</option><option value="transfer">Transfer</option><option value="income">Income</option></select>
     <button class="ghost del" data-c="${esc(c)}">✕</button></div>`).join("");
   $("#cat-list").querySelectorAll(".classsel").forEach(s=>{s.value=getClass(s.dataset.c);
     s.onchange=()=>{S.catClass[s.dataset.c]=s.value;save();renderCoach();toast("Saved");};});
@@ -711,8 +711,10 @@ function monthStats(month){
   const tx=S.transactions.filter(t=>monthKey(t.date)===month);
   let income=0,needs=0,wants=0,save=0;const spentByCat={};
   for(const t of tx){
+    const cls=getClass(t.cat);
+    if(cls==="transfer")continue;
     if(t.amt>0){income+=t.amt;continue;}
-    const a=Math.abs(t.amt);const cls=getClass(t.cat);
+    const a=Math.abs(t.amt);
     spentByCat[t.cat]=(spentByCat[t.cat]||0)+a;
     if(cls==="need")needs+=a;else if(cls==="save")save+=a;else if(cls==="income"){}else wants+=a;
   }
@@ -783,7 +785,7 @@ function renderCoach(){
   const denom=hasIncome?s.income:s.spend;
   const nP=Math.round(pct(s.needs,denom)*100),wP=Math.round(pct(s.wants,denom)*100),sP=Math.round(pct(hasIncome?savingsPart:s.save,denom)*100);
   const cmp=(actual,tgt)=>actual<=tgt?`<span class="ok">${actual}%</span>`:`<span class="high">${actual}%</span>`;
-  const expCats=S.categories.filter(c=>getClass(c)!=="income");
+  const expCats=S.categories.filter(c=>getClass(c)!=="income"&&getClass(c)!=="transfer");
   body.innerHTML=`
     <div class="card pad">
       <div class="coach-head">
