@@ -2,9 +2,10 @@ name: OneDayOnly deal alerts
 
 on:
   schedule:
-    # OneDayOnly's new deals go live at midnight SAST (UTC+2).
-    - cron: '15 22 * * *'   # 00:15 SAST — catch the fresh deals
-    - cron: '0 7 * * *'     # 09:00 SAST — catch-up for late additions
+    # Every hour — main drop is at midnight SAST (UTC+2), but new deals
+    # can appear during the day too. Already-alerted deals are skipped,
+    # so hourly checks don't repeat themselves.
+    - cron: '5 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:

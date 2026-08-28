@@ -7,8 +7,8 @@ a WhatsApp message when a deal is:
 - **70% off or more**.
 
 It runs for free on GitHub Actions — nothing to install and no server needed.
-Each deal is only alerted once, and it checks twice a day: just after midnight
-(when the new deals go live) and again at 09:00 as a catch-up.
+It checks **every hour** — the main drop is just after midnight, but new deals
+that appear during the day get caught too. Each deal is only alerted once.
 
 ## One-time setup (5 minutes, on your phone)
 
