@@ -199,6 +199,7 @@ def product_from_dict(d):
         "price": price,
         "original": original,
         "url": url,
+        "_raw": d,
     }
 
 
@@ -326,6 +327,34 @@ def send_alerts(deals, cfg, per_message=6):
     return ok
 
 
+# ---------------------------------------------------------------- debug
+
+def debug_dump(pages, products):
+    """Print what the site's product entries look like, to fix link building."""
+    for url, html_text in pages.items():
+        hrefs = re.findall(r'href="([^"#]+)"', html_text)
+        interesting = [h for h in hrefs if re.search(r"product|deal|/p/", h, re.I)]
+        uniq = list(dict.fromkeys(interesting))[:15]
+        log(f"link-ish hrefs on {url}:\n" + json.dumps(uniq, indent=1))
+    for p in products[:6]:
+        raw = p.get("_raw", {})
+        urlish = {
+            k: (v if isinstance(v, (str, int, float)) else str(v)[:120])
+            for k, v in raw.items()
+            if re.search(r"url|slug|link|id|sku|key|path|route", k, re.I)
+        }
+        log(f"product {p['name'][:50]!r}:\n keys={sorted(raw.keys())}\n"
+            f" urlish={json.dumps(urlish, default=str)[:500]}\n built={p['url']}")
+    for p in products[:3]:
+        if p["url"] == BASE_URL:
+            continue
+        try:
+            fetch(p["url"], timeout=20)
+            log(f"URL OK: {p['url']}")
+        except Exception as e:
+            log(f"URL FAIL {p['url']}: {e}")
+
+
 # ---------------------------------------------------------------- main
 
 def run():
@@ -366,6 +395,9 @@ def run():
             log(f"WARN: failed to fetch/parse {url}: {e}")
 
     log(f"Parsed {len(products)} products total.")
+    if os.environ.get("DEBUG_DUMP") == "1":
+        debug_dump(pages, list(products.values()))
+        return 0
     if not products:
         os.makedirs(DEBUG_DIR, exist_ok=True)
         for i, (url, html_text) in enumerate(pages.items()):

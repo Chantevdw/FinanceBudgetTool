@@ -16,6 +16,10 @@ on:
         description: "Send a test notification instead of checking deals"
         type: boolean
         default: false
+      debug_dump:
+        description: "Dump product data structure to the log (no alerts sent)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -40,6 +44,7 @@ jobs:
           MIN_DISCOUNT_PCT: '70'
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
           TEST_PING: ${{ inputs.test_ping && '1' || '0' }}
+          DEBUG_DUMP: ${{ inputs.debug_dump && '1' || '0' }}
         run: python3 onedayonly-alerts/check_deals.py
 
       - name: Save alert history (so you aren't re-alerted for the same deal)
