@@ -35,7 +35,7 @@ import urllib.request
 from datetime import date, datetime, timedelta
 
 BASE_URL = "https://www.onedayonly.co.za"
-DEFAULT_URLS = [BASE_URL + "/", BASE_URL + "/shop/all"]
+DEFAULT_URLS = [BASE_URL + "/"]
 STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state", "alerted.json")
 DEBUG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state", "debug")
 
@@ -281,15 +281,12 @@ def send_whatsapp(text, phone, apikey):
 
 
 def send_ntfy(header, text, topic):
+    # Title goes in the query string: HTTP headers can't carry emoji/UTF-8.
+    params = urllib.parse.urlencode({"title": header, "tags": "fire", "priority": "default"})
     req = urllib.request.Request(
-        f"https://ntfy.sh/{urllib.parse.quote(topic)}",
+        f"https://ntfy.sh/{urllib.parse.quote(topic)}?{params}",
         data=text.encode("utf-8"),
-        headers={
-            "User-Agent": USER_AGENT,
-            "Title": header,
-            "Tags": "fire",
-            "Priority": "default",
-        },
+        headers={"User-Agent": USER_AGENT},
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=60) as resp:
@@ -387,7 +384,7 @@ def run():
         save_state(state)
         log("Alerts sent and state saved.")
         return 0
-    log("ERROR: sending WhatsApp alerts failed; state not saved so they retry next run.")
+    log("ERROR: sending alerts failed; state not saved so they retry next run.")
     return 1
 
 
