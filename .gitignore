@@ -18,3 +18,4 @@ desktop.ini
 
 # OneDayOnly alert tool: debug page dumps stay local
 onedayonly-alerts/state/debug/
+__pycache__/
