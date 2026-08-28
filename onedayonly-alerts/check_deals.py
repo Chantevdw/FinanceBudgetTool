@@ -343,6 +343,16 @@ def run():
         log("ERROR: set NTFY_TOPIC and/or CALLMEBOT_PHONE + CALLMEBOT_APIKEY (or DRY_RUN=1).")
         return 2
 
+    if os.environ.get("TEST_PING") == "1":
+        ok = send_message(
+            "✅ OneDayOnly alerts test",
+            f"Test ping sent {datetime.now().strftime('%H:%M')} UTC — your phone is connected. "
+            "Deal alerts will arrive here.",
+            cfg,
+        )
+        log("Test ping sent." if ok else "ERROR: test ping failed.")
+        return 0 if ok else 1
+
     products = {}
     pages = {}
     for url in urls:
