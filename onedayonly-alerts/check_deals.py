@@ -8,7 +8,9 @@ Fetches the day's deals from onedayonly.co.za and sends a WhatsApp alert
 
 Runs on Python 3 standard library only — no pip installs needed.
 
-Environment variables:
+Environment variables (set at least one alert channel):
+  NTFY_TOPIC         ntfy.sh topic name — alerts arrive as phone push
+                     notifications via the free ntfy app (see README)
   CALLMEBOT_PHONE    WhatsApp number in international format, e.g. +27821234567
   CALLMEBOT_APIKEY   API key CallMeBot sends you (see README)
   MAX_PRICE          price threshold in rand (default 50)
@@ -254,7 +256,7 @@ def save_state(state):
         json.dump(state, f, indent=1, sort_keys=True)
 
 
-# ---------------------------------------------------------------- whatsapp
+# ---------------------------------------------------------------- alerts
 
 def format_deal(p):
     line = f"• R{p['price']:.0f}" if p["price"] == int(p["price"]) else f"• R{p['price']:.2f}"
@@ -267,10 +269,7 @@ def format_deal(p):
     return line
 
 
-def send_whatsapp(text, phone, apikey, dry_run):
-    if dry_run:
-        log("DRY_RUN — would send WhatsApp message:\n" + text)
-        return True
+def send_whatsapp(text, phone, apikey):
     params = urllib.parse.urlencode({"phone": phone, "text": text, "apikey": apikey})
     url = f"https://api.callmebot.com/whatsapp.php?{params}"
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
@@ -281,7 +280,43 @@ def send_whatsapp(text, phone, apikey, dry_run):
         return ok
 
 
-def send_alerts(deals, phone, apikey, dry_run, per_message=6):
+def send_ntfy(header, text, topic):
+    req = urllib.request.Request(
+        f"https://ntfy.sh/{urllib.parse.quote(topic)}",
+        data=text.encode("utf-8"),
+        headers={
+            "User-Agent": USER_AGENT,
+            "Title": header,
+            "Tags": "fire",
+            "Priority": "default",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        log(f"ntfy response {resp.status}")
+        return resp.status == 200
+
+
+def send_message(header, text, cfg):
+    """Send one alert through every configured channel; True if any succeeded."""
+    if cfg["dry_run"]:
+        log(f"DRY_RUN — would send:\n{header}\n{text}")
+        return True
+    sent = False
+    if cfg["ntfy_topic"]:
+        try:
+            sent = send_ntfy(header, text, cfg["ntfy_topic"]) or sent
+        except Exception as e:
+            log(f"WARN: ntfy send failed: {e}")
+    if cfg["phone"] and cfg["apikey"]:
+        try:
+            sent = send_whatsapp(f"{header}\n{text}", cfg["phone"], cfg["apikey"]) or sent
+        except Exception as e:
+            log(f"WARN: CallMeBot send failed: {e}")
+    return sent
+
+
+def send_alerts(deals, cfg, per_message=6):
     today = date.today().strftime("%d %b")
     ok = True
     for i in range(0, len(deals), per_message):
@@ -289,8 +324,8 @@ def send_alerts(deals, phone, apikey, dry_run, per_message=6):
         header = f"🔥 OneDayOnly deals ({today})"
         if len(deals) > per_message:
             header += f" [{i // per_message + 1}/{-(-len(deals) // per_message)}]"
-        text = header + "\n" + "\n".join(format_deal(p) for p in chunk)
-        ok = send_whatsapp(text, phone, apikey, dry_run) and ok
+        text = "\n".join(format_deal(p) for p in chunk)
+        ok = send_message(header, text, cfg) and ok
     return ok
 
 
@@ -299,13 +334,16 @@ def send_alerts(deals, phone, apikey, dry_run, per_message=6):
 def run():
     max_price = float(os.environ.get("MAX_PRICE", "50"))
     min_discount = float(os.environ.get("MIN_DISCOUNT_PCT", "70"))
-    phone = os.environ.get("CALLMEBOT_PHONE", "")
-    apikey = os.environ.get("CALLMEBOT_APIKEY", "")
-    dry_run = os.environ.get("DRY_RUN") == "1"
+    cfg = {
+        "ntfy_topic": os.environ.get("NTFY_TOPIC", "").strip(),
+        "phone": os.environ.get("CALLMEBOT_PHONE", "").strip(),
+        "apikey": os.environ.get("CALLMEBOT_APIKEY", "").strip(),
+        "dry_run": os.environ.get("DRY_RUN") == "1",
+    }
     urls = [u.strip() for u in os.environ.get("ODO_URLS", ",".join(DEFAULT_URLS)).split(",") if u.strip()]
 
-    if not dry_run and (not phone or not apikey):
-        log("ERROR: CALLMEBOT_PHONE and CALLMEBOT_APIKEY must be set (or DRY_RUN=1).")
+    if not cfg["dry_run"] and not cfg["ntfy_topic"] and not (cfg["phone"] and cfg["apikey"]):
+        log("ERROR: set NTFY_TOPIC and/or CALLMEBOT_PHONE + CALLMEBOT_APIKEY (or DRY_RUN=1).")
         return 2
 
     products = {}
@@ -343,7 +381,7 @@ def run():
     if not new_deals:
         return 0
 
-    if send_alerts(new_deals, phone, apikey, dry_run):
+    if send_alerts(new_deals, cfg):
         state.setdefault(today_key, [])
         state[today_key].extend(p["key"] for p in new_deals)
         save_state(state)
