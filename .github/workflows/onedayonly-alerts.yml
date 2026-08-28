@@ -4,8 +4,9 @@ on:
   schedule:
     # Every hour — main drop is at midnight SAST (UTC+2), but new deals
     # can appear during the day too. Already-alerted deals are skipped,
-    # so hourly checks don't repeat themselves.
-    - cron: '5 * * * *'
+    # so hourly checks don't repeat themselves. Minute 23 avoids the
+    # congested top-of-hour slots where GitHub drops scheduled runs.
+    - cron: '23 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:
