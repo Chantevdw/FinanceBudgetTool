@@ -197,6 +197,22 @@ def product_from_dict(d):
         else:
             url = BASE_URL
 
+    img = first_key(d, ("image", "imageUrl", "image_url", "thumbnail", "thumbnailUrl"))
+    if isinstance(img, (list, tuple)) and img:
+        img = img[0]
+    if isinstance(img, dict):
+        img = first_key(img, ("url", "src", "path", "href"))
+    if isinstance(img, str) and img.strip():
+        img = img.strip()
+        if img.startswith("//"):
+            img = "https:" + img
+        elif img.startswith("/"):
+            img = BASE_URL + img
+        elif not img.startswith("http"):
+            img = None
+    else:
+        img = None
+
     pid = d.get("id") or d.get("sku") or d.get("productId") or d.get("uid")
     key_src = str(pid) if pid else f"{name}|{price}"
     return {
@@ -205,6 +221,7 @@ def product_from_dict(d):
         "price": price,
         "original": original,
         "url": url,
+        "image": img,
         "_raw": d,
     }
 
@@ -287,11 +304,15 @@ def send_whatsapp(text, phone, apikey):
         return ok
 
 
-def send_ntfy(header, text, topic):
-    # Title goes in the query string: HTTP headers can't carry emoji/UTF-8.
-    params = urllib.parse.urlencode({"title": header, "tags": "fire", "priority": "default"})
+def send_ntfy(header, text, topic, click=None, attach=None):
+    # Everything goes in the query string: HTTP headers can't carry emoji/UTF-8.
+    params = {"title": header, "tags": "fire", "priority": "default"}
+    if click:
+        params["click"] = click     # tapping the notification opens the deal
+    if attach:
+        params["attach"] = attach   # product photo shown in the notification
     req = urllib.request.Request(
-        f"https://ntfy.sh/{urllib.parse.quote(topic)}?{params}",
+        f"https://ntfy.sh/{urllib.parse.quote(topic)}?{urllib.parse.urlencode(params)}",
         data=text.encode("utf-8"),
         headers={"User-Agent": USER_AGENT},
         method="POST",
@@ -320,17 +341,55 @@ def send_message(header, text, cfg):
     return sent
 
 
+def deal_title(p):
+    title = f"🔥 R{p['price']:.0f}" if p["price"] == int(p["price"]) else f"🔥 R{p['price']:.2f}"
+    if p["original"]:
+        title += f" (was R{p['original']:.0f}"
+        if p.get("discount_pct"):
+            title += f", {p['discount_pct']}% off"
+        title += ")"
+    return title + " — OneDayOnly"
+
+
 def send_alerts(deals, cfg, per_message=6):
-    today = date.today().strftime("%d %b")
-    ok = True
-    for i in range(0, len(deals), per_message):
-        chunk = deals[i:i + per_message]
-        header = f"🔥 OneDayOnly deals ({today})"
-        if len(deals) > per_message:
-            header += f" [{i // per_message + 1}/{-(-len(deals) // per_message)}]"
-        text = "\n".join(format_deal(p) for p in chunk)
-        ok = send_message(header, text, cfg) and ok
-    return ok
+    """Send alerts on every configured channel; returns the deals delivered."""
+    if cfg["dry_run"]:
+        for p in deals:
+            log(f"DRY_RUN — would send: {deal_title(p)} | {p['name']} | "
+                f"click={p['url']} | image={p.get('image')}")
+        return deals
+
+    delivered = set()
+
+    # ntfy: one rich notification per deal (photo + tap-through to the deal)
+    if cfg["ntfy_topic"]:
+        for p in deals:
+            try:
+                if send_ntfy(deal_title(p), p["name"], cfg["ntfy_topic"],
+                             click=p["url"], attach=p.get("image")):
+                    delivered.add(p["key"])
+            except Exception as e:
+                log(f"WARN: ntfy send failed for {p['name'][:40]!r}: {e}")
+
+    # CallMeBot WhatsApp: text-only, batched
+    if cfg["phone"] and cfg["apikey"]:
+        today = date.today().strftime("%d %b")
+        wa_ok = True
+        for i in range(0, len(deals), per_message):
+            chunk = deals[i:i + per_message]
+            header = f"🔥 OneDayOnly deals ({today})"
+            if len(deals) > per_message:
+                header += f" [{i // per_message + 1}/{-(-len(deals) // per_message)}]"
+            text = header + "\n" + "\n".join(format_deal(p) for p in chunk)
+            try:
+                wa_ok = send_whatsapp(text, cfg["phone"], cfg["apikey"]) and wa_ok
+            except Exception as e:
+                log(f"WARN: CallMeBot send failed: {e}")
+                wa_ok = False
+        if wa_ok:
+            delivered.update(p["key"] for p in deals)
+
+    return [p for p in deals if p["key"] in delivered]
 
 
 # ---------------------------------------------------------------- debug
@@ -349,16 +408,19 @@ def debug_dump(pages, products):
             for k, v in raw.items()
             if re.search(r"url|slug|link|id|sku|key|path|route", k, re.I)
         }
+        raw_img = json.dumps({k: raw.get(k) for k in ("image", "gallery")}, default=str)[:300]
         log(f"product {p['name'][:50]!r}:\n keys={sorted(raw.keys())}\n"
-            f" urlish={json.dumps(urlish, default=str)[:500]}\n built={p['url']}")
+            f" urlish={json.dumps(urlish, default=str)[:500]}\n"
+            f" image_raw={raw_img}\n built={p['url']}\n built_image={p.get('image')}")
     for p in products[:3]:
-        if p["url"] == BASE_URL:
-            continue
-        try:
-            fetch(p["url"], timeout=20)
-            log(f"URL OK: {p['url']}")
-        except Exception as e:
-            log(f"URL FAIL {p['url']}: {e}")
+        for u in (p["url"], p.get("image")):
+            if not u or u == BASE_URL:
+                continue
+            try:
+                fetch(u, timeout=20)
+                log(f"URL OK: {u}")
+            except Exception as e:
+                log(f"URL FAIL {u}: {e}")
 
 
 # ---------------------------------------------------------------- main
@@ -426,13 +488,16 @@ def run():
     if not new_deals:
         return 0
 
-    if send_alerts(new_deals, cfg):
+    sent = send_alerts(new_deals, cfg)
+    if sent:
         state.setdefault(today_key, [])
-        state[today_key].extend(p["key"] for p in new_deals)
+        state[today_key].extend(p["key"] for p in sent)
         save_state(state)
-        log("Alerts sent and state saved.")
+    if len(sent) == len(new_deals):
+        log(f"All {len(sent)} alerts sent and state saved.")
         return 0
-    log("ERROR: sending alerts failed; state not saved so they retry next run.")
+    log(f"ERROR: only {len(sent)}/{len(new_deals)} alerts sent; "
+        "the rest retry next run.")
     return 1
 
 
@@ -441,7 +506,7 @@ def run():
 SELFTEST_HTML = """
 <html><head>
 <script type="application/ld+json">
-{"@type":"Product","name":"Bamboo Socks 3-Pack","sku":"SOCK1",
+{"@type":"Product","name":"Bamboo Socks 3-Pack","sku":"SOCK1","image":"https://cdn.example.com/socks.jpg",
  "offers":{"price":"49.00","priceCurrency":"ZAR"},"url":"/products/bamboo-socks"}
 </script>
 <script type="application/json" id="__NEXT_DATA__">
@@ -449,7 +514,8 @@ SELFTEST_HTML = """
  {"id":101,"name":"Chef Knife Set","price":299,"retailPrice":1499,"urlKey":"chef-knife-set"},
  {"id":102,"name":"Fancy Espresso Machine","price":4999,"originalPrice":6999,"urlKey":"espresso"},
  {"id":103,"name":"Kids Puzzle","price":{"value":45.5},"oldPrice":{"value":99},"slug":"kids-puzzle"},
- {"id":"weave-cross-body-bag-20260826","name":"Weave Cross Body Bag","price":39,"retailPrice":199}
+ {"id":"weave-cross-body-bag-20260826","name":"Weave Cross Body Bag","price":39,"retailPrice":199,
+  "image":{"url":"/media/bag.jpg"}}
 ]}}}
 </script>
 </head><body></body></html>
@@ -471,6 +537,10 @@ def selftest():
     bag = next(p for p in deals if "Bag" in p["name"])
     # slug-style id becomes the product link
     assert bag["url"] == BASE_URL + "/products/weave-cross-body-bag-20260826", bag["url"]
+    assert bag["image"] == BASE_URL + "/media/bag.jpg", bag["image"]
+    socks = next(p for p in deals if "Socks" in p["name"])
+    assert socks["image"] == "https://cdn.example.com/socks.jpg", socks["image"]
+    print("title sample:", deal_title(bag))
     for p in deals:
         print(format_deal(p))
     print("SELFTEST OK")
