@@ -189,7 +189,13 @@ def product_from_dict(d):
         elif not url.startswith("http"):
             url = BASE_URL + "/products/" + url.strip("/")
     else:
-        url = BASE_URL
+        # OneDayOnly: the "id" field is the URL slug, e.g.
+        # id "weave-cross-body-bag-20260826" -> /products/weave-cross-body-bag-20260826
+        slug = d.get("id")
+        if isinstance(slug, str) and not slug.isdigit() and re.fullmatch(r"[a-z0-9][a-z0-9-]{3,}", slug):
+            url = BASE_URL + "/products/" + slug
+        else:
+            url = BASE_URL
 
     pid = d.get("id") or d.get("sku") or d.get("productId") or d.get("uid")
     key_src = str(pid) if pid else f"{name}|{price}"
@@ -442,7 +448,8 @@ SELFTEST_HTML = """
 {"props":{"pageProps":{"deals":[
  {"id":101,"name":"Chef Knife Set","price":299,"retailPrice":1499,"urlKey":"chef-knife-set"},
  {"id":102,"name":"Fancy Espresso Machine","price":4999,"originalPrice":6999,"urlKey":"espresso"},
- {"id":103,"name":"Kids Puzzle","price":{"value":45.5},"oldPrice":{"value":99},"slug":"kids-puzzle"}
+ {"id":103,"name":"Kids Puzzle","price":{"value":45.5},"oldPrice":{"value":99},"slug":"kids-puzzle"},
+ {"id":"weave-cross-body-bag-20260826","name":"Weave Cross Body Bag","price":39,"retailPrice":199}
 ]}}}
 </script>
 </head><body></body></html>
@@ -451,14 +458,19 @@ SELFTEST_HTML = """
 
 def selftest():
     products = parse_products(SELFTEST_HTML)
-    assert len(products) == 4, f"expected 4 products, got {len(products)}: {products}"
+    assert len(products) == 5, f"expected 5 products, got {len(products)}: {products}"
     deals = matching_deals(products, 50, 70)
     names = sorted(p["name"] for p in deals)
-    # Socks R49 (<50), Knife Set 80% off, Puzzle R45.50 (<50); Espresso matches neither
-    assert names == ["Bamboo Socks 3-Pack", "Chef Knife Set", "Kids Puzzle"], names
+    # Socks R49 (<50), Knife Set 80% off, Puzzle R45.50 (<50), Bag R39 (<50);
+    # Espresso matches neither
+    assert names == ["Bamboo Socks 3-Pack", "Chef Knife Set", "Kids Puzzle",
+                     "Weave Cross Body Bag"], names
     knife = next(p for p in deals if "Knife" in p["name"])
     assert knife["discount_pct"] == 80, knife
     assert knife["url"] == BASE_URL + "/products/chef-knife-set", knife["url"]
+    bag = next(p for p in deals if "Bag" in p["name"])
+    # slug-style id becomes the product link
+    assert bag["url"] == BASE_URL + "/products/weave-cross-body-bag-20260826", bag["url"]
     for p in deals:
         print(format_deal(p))
     print("SELFTEST OK")
