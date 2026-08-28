@@ -12,6 +12,10 @@ on:
         description: "Dry run (print alerts instead of sending them)"
         type: boolean
         default: false
+      test_ping:
+        description: "Send a test notification instead of checking deals"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -35,6 +39,7 @@ jobs:
           MAX_PRICE: '50'
           MIN_DISCOUNT_PCT: '70'
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          TEST_PING: ${{ inputs.test_ping && '1' || '0' }}
         run: python3 onedayonly-alerts/check_deals.py
 
       - name: Save alert history (so you aren't re-alerted for the same deal)
