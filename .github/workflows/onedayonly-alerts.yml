@@ -28,7 +28,8 @@ jobs:
 
       - name: Check deals and send alerts
         env:
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          # The NTFY_TOPIC secret (if set) overrides the fallback topic here.
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC || 'odo-deals-chante-x7k2' }}
           CALLMEBOT_PHONE: ${{ secrets.CALLMEBOT_PHONE }}
           CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
           MAX_PRICE: '50'
