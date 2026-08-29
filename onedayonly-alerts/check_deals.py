@@ -156,6 +156,9 @@ def product_from_dict(d):
     if not isinstance(name, str) or not (2 < len(name) < 300):
         return None
 
+    if d.get("isSoldOut") or d.get("soldOut"):
+        return None
+
     # JSON-LD: price lives under "offers"
     offers = d.get("offers")
     if isinstance(offers, list) and offers:
@@ -213,6 +216,10 @@ def product_from_dict(d):
     else:
         img = None
 
+    left = d.get("xLeftQuantity")
+    if not isinstance(left, int) or not (0 < left <= 10):
+        left = None
+
     pid = d.get("id") or d.get("sku") or d.get("productId") or d.get("uid")
     key_src = str(pid) if pid else f"{name}|{price}"
     return {
@@ -222,6 +229,7 @@ def product_from_dict(d):
         "original": original,
         "url": url,
         "image": img,
+        "left": left,
         "_raw": d,
     }
 
@@ -364,8 +372,11 @@ def send_alerts(deals, cfg, per_message=6):
     # ntfy: one rich notification per deal (photo + tap-through to the deal)
     if cfg["ntfy_topic"]:
         for p in deals:
+            body = p["name"]
+            if p.get("left"):
+                body += f" — only {p['left']} left, be quick!"
             try:
-                if send_ntfy(deal_title(p), p["name"], cfg["ntfy_topic"],
+                if send_ntfy(deal_title(p), body, cfg["ntfy_topic"],
                              click=p["url"], attach=p.get("image")):
                     delivered.add(p["key"])
             except Exception as e:
@@ -515,7 +526,8 @@ SELFTEST_HTML = """
  {"id":102,"name":"Fancy Espresso Machine","price":4999,"originalPrice":6999,"urlKey":"espresso"},
  {"id":103,"name":"Kids Puzzle","price":{"value":45.5},"oldPrice":{"value":99},"slug":"kids-puzzle"},
  {"id":"weave-cross-body-bag-20260826","name":"Weave Cross Body Bag","price":39,"retailPrice":199,
-  "image":{"url":"/media/bag.jpg"}}
+  "image":{"url":"/media/bag.jpg"},"xLeftQuantity":3},
+ {"id":"gone-gadget-20260826","name":"Sold Out Gadget","price":29,"retailPrice":299,"isSoldOut":true}
 ]}}}
 </script>
 </head><body></body></html>
@@ -534,10 +546,12 @@ def selftest():
     knife = next(p for p in deals if "Knife" in p["name"])
     assert knife["discount_pct"] == 80, knife
     assert knife["url"] == BASE_URL + "/products/chef-knife-set", knife["url"]
+    assert not any("Sold Out" in p["name"] for p in products), "sold-out deals must be skipped"
     bag = next(p for p in deals if "Bag" in p["name"])
     # slug-style id becomes the product link
     assert bag["url"] == BASE_URL + "/products/weave-cross-body-bag-20260826", bag["url"]
     assert bag["image"] == BASE_URL + "/media/bag.jpg", bag["image"]
+    assert bag["left"] == 3, bag["left"]
     socks = next(p for p in deals if "Socks" in p["name"])
     assert socks["image"] == "https://cdn.example.com/socks.jpg", socks["image"]
     print("title sample:", deal_title(bag))
