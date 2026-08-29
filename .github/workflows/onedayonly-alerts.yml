@@ -2,11 +2,11 @@ name: OneDayOnly deal alerts
 
 on:
   schedule:
-    # Every hour — main drop is at midnight SAST (UTC+2), but new deals
-    # can appear during the day too. Already-alerted deals are skipped,
-    # so hourly checks don't repeat themselves. Minute 23 avoids the
-    # congested top-of-hour slots where GitHub drops scheduled runs.
-    - cron: '23 * * * *'
+    # Every 10 minutes — cheap deals sell out fast, so check often.
+    # Already-alerted deals are skipped, so frequent checks never repeat
+    # themselves. (GitHub's scheduler is unreliable and skips many slots;
+    # an external hourly gap-filler guarantees at least one run per hour.)
+    - cron: '3,13,23,33,43,53 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:
