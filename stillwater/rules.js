@@ -1,10 +1,12 @@
 // Pure movement rules for Stillwater. No DOM access, so it can be tested in Node.
 //
 // A cell is { x, y, h, key, ... } with optional fields:
-//  - rots:   views in which the stone is there at all (otherwise it is absent)
-//  - bridge: true for a movable bridge, with axis 'x' or 'y'. It only carries
-//            you along that axis.
-//  - door:   key of the paired door. Walking into a door puts you on its partner.
+//  - rots:    views in which the stone is there at all (otherwise it is absent)
+//  - bridge:  true for a movable bridge, with axis 'x' or 'y'. It only carries
+//             you along that axis.
+//  - door:    key of the paired door. Walking into a door puts you on its partner.
+//  - section: index of the turning section the stone belongs to. Its position
+//             depends on how many quarter turns the section has had.
 //
 // Walking needs flat ground (same height), except up and down ladders.
 
@@ -17,7 +19,20 @@
 
   const passable = (cell, dx, dy) => !cell.bridge || (cell.axis === 'x' ? dy === 0 : dx === 0);
 
-  function createBoard(level) {
+  // A grid position after some quarter turns about a pivot.
+  function turnCell([x, y], [px, py], quarters) {
+    let dx = x - px;
+    let dy = y - py;
+    for (let i = 0; i < quarters; i++) [dx, dy] = [-dy, dx];
+    return [px + dx, py + dy];
+  }
+
+  // world: { sections: [quarter turns], axes: 'xy...' } for the bridges.
+  // Missing parts start in their level's default state.
+  function createBoard(level, world = {}) {
+    const sections = world.sections || (level.sections || []).map(() => 0);
+    const axes = world.axes || (level.bridges || []).map((b) => b.axis).join('');
+
     const cells = new Map();
     const add = ([x, y, h], extra) => {
       const cell = { x, y, h, key: key(x, y), ...extra };
@@ -28,7 +43,14 @@
     for (const at of level.tiles) add(at, {});
     for (const view of level.views || []) add(view.at, { rots: view.rots });
 
-    const bridges = (level.bridges || []).map((b) => add(b.at, { bridge: true, axis: b.axis }));
+    (level.sections || []).forEach((section, i) => {
+      for (const [x, y, h] of section.cells) {
+        const [rx, ry] = turnCell([x, y], section.pivot, sections[i]);
+        add([rx, ry, h], { section: i, base: [x, y] });
+      }
+    });
+
+    const bridges = (level.bridges || []).map((b, i) => add(b.at, { bridge: true, axis: axes[i], index: i }));
 
     for (const [a, b] of level.doors || []) {
       add(a, { door: key(b[0], b[1]) });
@@ -37,7 +59,7 @@
 
     const ladders = (level.ladders || []).map(([a, b]) => [key(a[0], a[1]), key(b[0], b[1])]);
 
-    return { cells, bridges, ladders };
+    return { cells, bridges, ladders, world: { sections: sections.slice(), axes } };
   }
 
   // Cells you can step to from `cell` in view `rot`.
@@ -96,52 +118,59 @@
   }
 
   // Can the level be finished at all? Searches over the cell you stand on, the
-  // view, and every bridge's axis. Turning the view is only allowed if the
-  // stone under you stays in place. Tapping a bridge turns it, unless you stand on it.
+  // view, every bridge's axis and every section's turn. Actions:
+  //  - turn the view a quarter (only if the stone under you stays in place)
+  //  - walk to a neighbour
+  //  - tap a bridge to turn it (not while standing on it)
+  //  - tap a knob to turn its section a quarter (not while standing on it)
   function solve(level) {
-    const board = createBoard(level);
-    const { bridges } = board;
-    const axesOf = () => bridges.map((b) => b.axis).join('');
-    const useAxes = (axes) => bridges.forEach((b, i) => { b.axis = axes[i]; });
-    const flip = (axes, i) => axes.slice(0, i) + (axes[i] === 'x' ? 'y' : 'x') + axes.slice(i + 1);
-
+    const sectionCount = (level.sections || []).length;
     const startKey = key(level.start[0], level.start[1]);
     const goalKey = key(level.goal[0], level.goal[1]);
-    const queue = [{ cellKey: startKey, rot: 0, axes: axesOf() }];
-    const seen = new Set([[startKey, 0, queue[0].axes].join('|')]);
+    const initial = createBoard(level).world;
+    const id = (s) => [s.cellKey, s.rot, s.sections.join(''), s.axes].join('|');
+
+    const queue = [{ cellKey: startKey, rot: 0, sections: initial.sections, axes: initial.axes }];
+    const seen = new Set([id(queue[0])]);
 
     for (let i = 0; i < queue.length; i++) {
       const state = queue[i];
       if (state.cellKey === goalKey) return true;
 
-      useAxes(state.axes);
+      const board = createBoard(level, { sections: state.sections, axes: state.axes });
       const cell = board.cells.get(state.cellKey);
-
       const next = [];
+
       for (const turned of [(state.rot + 1) % 4, (state.rot + 3) % 4]) {
-        if (visibleAt(cell, turned)) next.push({ cellKey: state.cellKey, rot: turned, axes: state.axes });
+        if (visibleAt(cell, turned)) next.push({ ...state, rot: turned });
       }
       for (const n of neighbors(board, cell, state.rot)) {
-        next.push({ cellKey: n.key, rot: state.rot, axes: state.axes });
+        next.push({ ...state, cellKey: n.key });
       }
-      bridges.forEach((b, i) => {
-        if (b.key !== state.cellKey) {
-          next.push({ cellKey: state.cellKey, rot: state.rot, axes: flip(state.axes, i) });
-        }
+      board.bridges.forEach((b) => {
+        if (b.key === state.cellKey) return;
+        const axes = state.axes.split('').map((a, j) => (j === b.index ? (a === 'x' ? 'y' : 'x') : a)).join('');
+        next.push({ ...state, axes });
       });
+      for (let s = 0; s < sectionCount; s++) {
+        if (cell.section === s) continue;
+        const sections = state.sections.slice();
+        sections[s] = (sections[s] + 1) % 4;
+        next.push({ ...state, sections });
+      }
 
-      for (const s of next) {
-        const id = [s.cellKey, s.rot, s.axes].join('|');
-        if (!seen.has(id)) {
-          seen.add(id);
-          queue.push(s);
+      for (const st of next) {
+        const sid = id(st);
+        if (!seen.has(sid)) {
+          seen.add(sid);
+          queue.push(st);
         }
       }
     }
     return false;
   }
 
-  const api = { key, visibleAt, createBoard, neighbors, findPath, solve };
+  const api = { key, visibleAt, turnCell, createBoard, neighbors, findPath, solve };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;

@@ -9,21 +9,26 @@
 //           'y' north-south. Tap one to turn it, unless you stand on it.
 // doors:    [[x, y, h], [x, y, h]] pairs. Walking into one comes out of the other.
 // ladders:  [[x, y], [x, y]] adjacent cells whose heights differ by one.
+// sections: { pivot, cells, knob } stones that turn a quarter about `pivot`
+//           each time the knob at `knob` is tapped. Ida can't stand on a
+//           section while it turns. `cells` are listed in their starting place.
 // palette:  one of the palettes defined in game.js.
 
 const LEVELS = [
   {
-    name: 'First Steps',
-    hint: 'Tap a stone to walk there. Ladders let you climb up or down one level.',
+    name: 'Turning Arm',
+    hint: 'Tap the knob to turn the arm. Walk only where the path is connected.',
     palette: 'sand',
     size: 4,
     start: [0, 0],
-    goal: [3, 1],
+    goal: [1, 3],
     tiles: [
-      [0, 0, 0], [1, 0, 0], [1, 1, 1], [2, 1, 1], [3, 1, 1],
+      [0, 0, 0], [1, 3, 0],
       [2, 0, 2], // a monument stone you can see but not reach
     ],
-    ladders: [[[1, 0], [1, 1]]],
+    sections: [
+      { pivot: [1, 1], cells: [[0, 1, 0], [1, 1, 0], [2, 1, 0]], knob: [3, 1, 0] },
+    ],
   },
   {
     name: 'The Gap',

@@ -1,5 +1,5 @@
 (function () {
-  const { key, createBoard, findPath, visibleAt } = Rules;
+  const { key, createBoard, findPath, visibleAt, turnCell } = Rules;
 
   const canvas = document.getElementById('scene');
   const ctx = canvas.getContext('2d');
@@ -34,12 +34,17 @@
   let levelIndex = 0;
   let level;
   let board;
+  let world; // { sections: [quarter turns], axes } as the board was last built
   let palette;
   let goalKey;
   let player; // { x, y, h, key }; x/y/h are floats while walking
   let angle = 0; // drawn angle of the world
   let targetAngle = 0; // angle the world is turning to
-  let busy = false; // walking or turning a bridge
+  let sectionTurns = []; // total quarter turns each section has made, for animation
+  let sectionAngle = []; // drawn angle of each section
+  let bridgeTurn = []; // drawn angle of each bridge
+  let viewShown = {}; // fade of stones that exist only in some views, by key
+  let busy = false; // walking, or a bridge or section is turning
   let finished = false;
   let drag = null; // { id, x, startAngle, moved } while a finger is down
   let time = 0;
@@ -77,9 +82,32 @@
     };
   }
 
+  // Where a stone is drawn right now. A section turns smoothly about its pivot.
+  function pose(cell) {
+    if (cell.section !== undefined) {
+      const [px, py] = level.sections[cell.section].pivot;
+      const [bx, by] = cell.base;
+      const a = sectionAngle[cell.section];
+      const dx = bx - px;
+      const dy = by - py;
+      return {
+        x: px + dx * Math.cos(a) - dy * Math.sin(a),
+        y: py + dx * Math.sin(a) + dy * Math.cos(a),
+        h: cell.h,
+        turn: 0,
+      };
+    }
+    return {
+      x: cell.x,
+      y: cell.y,
+      h: cell.h,
+      turn: cell.bridge ? bridgeTurn[cell.index] : 0,
+    };
+  }
+
   // Stones that only exist in some views fade in where they are.
   function alphaOf(cell) {
-    return cell.rots ? cell.shown : 1;
+    return cell.rots ? viewShown[cell.key] : 1;
   }
 
   function resize() {
@@ -100,16 +128,26 @@
     originY = h * 0.46;
   }
 
+  function rebuild() {
+    board = createBoard(level, world);
+  }
+
   function loadLevel(index) {
     levelIndex = index;
     level = LEVELS[index];
-    board = createBoard(level);
     palette = PALETTES[level.palette];
     goalKey = key(level.goal[0], level.goal[1]);
 
+    world = createBoard(level).world;
+    rebuild();
+
+    sectionTurns = (level.sections || []).map(() => 0);
+    sectionAngle = (level.sections || []).map(() => 0);
+    bridgeTurn = world.axes.split('').map((a) => (a === 'x' ? 0 : HALF_PI));
+
+    viewShown = {};
     for (const cell of board.cells.values()) {
-      if (cell.rots) cell.shown = visibleAt(cell, 0) ? 1 : 0;
-      if (cell.bridge) cell.turn = cell.axis === 'x' ? 0 : HALF_PI;
+      if (cell.rots) viewShown[cell.key] = visibleAt(cell, 0) ? 1 : 0;
     }
 
     const startCell = board.cells.get(key(level.start[0], level.start[1]));
@@ -211,7 +249,22 @@
   // Tapping a bridge turns it, unless you are standing on it.
   async function turnBridge(cell) {
     if (busy || finished || cell.key === player.key) return;
-    cell.axis = cell.axis === 'x' ? 'y' : 'x';
+    const axes = world.axes.split('');
+    axes[cell.index] = axes[cell.index] === 'x' ? 'y' : 'x';
+    world.axes = axes.join('');
+    rebuild();
+    busy = true;
+    await animate(320, () => {});
+    busy = false;
+  }
+
+  // Tapping a knob turns its section a quarter, unless you are standing on the section.
+  async function turnSection(i) {
+    if (busy || finished) return;
+    if (board.cells.get(player.key).section === i) return;
+    world.sections[i] = (world.sections[i] + 1) % 4;
+    sectionTurns[i] += 1;
+    rebuild();
     busy = true;
     await animate(320, () => {});
     busy = false;
@@ -224,7 +277,8 @@
     const current = view();
     for (const cell of board.cells.values()) {
       if (!visibleAt(cell, current)) continue;
-      const p = project(cell.x, cell.y, cell.h);
+      const q = pose(cell);
+      const p = project(q.x, q.y, q.h);
       if (Math.abs(px - p.sx) / W + Math.abs(py - p.sy) / H <= 1 && p.depth > bestDepth) {
         best = cell;
         bestDepth = p.depth;
@@ -233,8 +287,23 @@
     return best;
   }
 
+  // Index of the knob under the pointer, or -1.
+  function knobAt(px, py) {
+    return (level.sections || []).findIndex((section) => {
+      const p = project(section.knob[0], section.knob[1], section.knob[2]);
+      return Math.hypot(px - p.sx, py - p.sy) < W * 0.45;
+    });
+  }
+
   function tapAt(x, y) {
     if (busy || finished) return;
+
+    const knob = knobAt(x, y);
+    if (knob !== -1) {
+      turnSection(knob);
+      return;
+    }
+
     const cell = cellAt(x, y);
     if (!cell) return;
     if (cell.bridge) {
@@ -308,18 +377,18 @@
     ctx.closePath();
   }
 
-  // Footprint of a stone in grid units, counter-clockwise. A bridge is a thin
-  // plank along its axis.
-  function footprint(cell) {
-    if (!cell.bridge) {
-      return [[cell.x - 0.5, cell.y - 0.5], [cell.x + 0.5, cell.y - 0.5],
-        [cell.x + 0.5, cell.y + 0.5], [cell.x - 0.5, cell.y + 0.5]];
+  // Footprint of a drawn stone in grid units, counter-clockwise. A bridge is a
+  // thin plank along its axis.
+  function footprint(q, isBridge) {
+    if (!isBridge) {
+      return [[q.x - 0.5, q.y - 0.5], [q.x + 0.5, q.y - 0.5],
+        [q.x + 0.5, q.y + 0.5], [q.x - 0.5, q.y + 0.5]];
     }
-    const c = Math.cos(cell.turn);
-    const s = Math.sin(cell.turn);
+    const c = Math.cos(q.turn);
+    const s = Math.sin(q.turn);
     return [[-0.5, -0.16], [0.5, -0.16], [0.5, 0.16], [-0.5, 0.16]].map(([u, v]) => [
-      cell.x + u * c - v * s,
-      cell.y + u * s + v * c,
+      q.x + u * c - v * s,
+      q.y + u * s + v * c,
     ]);
   }
 
@@ -364,9 +433,10 @@
   }
 
   function drawCell(cell, alpha) {
-    drawBlock(footprint(cell), cell.h, alpha);
+    const q = pose(cell);
+    drawBlock(footprint(q, cell.bridge), q.h, alpha);
 
-    const { sx, sy } = project(cell.x, cell.y, cell.h);
+    const { sx, sy } = project(q.x, q.y, q.h);
     ctx.globalAlpha = alpha;
     if (cell.key === goalKey) drawGoal(sx, sy);
     if (cell.door) drawDoor(sx, sy);
@@ -388,6 +458,25 @@
     ctx.ellipse(sx, sy, W * 0.22, H * 0.22, 0, 0, Math.PI * 2);
     ctx.fillStyle = INK;
     ctx.globalAlpha *= 0.8;
+    ctx.fill();
+  }
+
+  // A knob sits beside its section: a hub with four short arms.
+  function drawKnob(section) {
+    const s = W / 34;
+    const { sx, sy } = project(section.knob[0], section.knob[1], section.knob[2]);
+    ctx.strokeStyle = palette.right;
+    ctx.fillStyle = palette.accent;
+    ctx.lineWidth = 3 * s;
+    ctx.lineCap = 'round';
+    for (const [ax, ay] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - 4 * s);
+      ctx.lineTo(sx + ax * 12 * s, sy - 4 * s + ay * 12 * s);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(sx, sy - 4 * s, 7 * s, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -486,8 +575,9 @@
     for (const cell of board.cells.values()) {
       const alpha = alphaOf(cell);
       if (alpha <= 0.01) continue;
+      const q = pose(cell);
       items.push({
-        depth: project(cell.x, cell.y, cell.h).depth,
+        depth: project(q.x, q.y, q.h).depth,
         draw: () => drawCell(cell, alpha),
       });
     }
@@ -497,6 +587,13 @@
       items.push({
         depth: project((ca.x + cb.x) / 2, (ca.y + cb.y) / 2, Math.max(ca.h, cb.h)).depth,
         draw: () => drawLadder(ca, cb),
+      });
+    }
+    for (const section of level.sections || []) {
+      const { sx, sy } = project(section.knob[0], section.knob[1], section.knob[2]);
+      items.push({
+        depth: project(section.knob[0], section.knob[1], section.knob[2]).depth + 0.2,
+        draw: () => drawKnob(section),
       });
     }
     items.push({
@@ -514,19 +611,23 @@
     const diff = targetAngle - angle;
     angle = Math.abs(diff) < 0.0005 ? targetAngle : angle + diff * 0.14;
 
-    // Stones fade in and out with the view. Bridges swing to their axis.
+    // Sections, bridges and fading stones move toward their current state.
+    (level.sections || []).forEach((section, i) => {
+      const target = sectionTurns[i] * HALF_PI;
+      sectionAngle[i] += (target - sectionAngle[i]) * 0.2;
+      if (Math.abs(target - sectionAngle[i]) < 0.001) sectionAngle[i] = target;
+    });
+    world.axes.split('').forEach((a, i) => {
+      const target = a === 'x' ? 0 : HALF_PI;
+      bridgeTurn[i] += (target - bridgeTurn[i]) * 0.2;
+      if (Math.abs(target - bridgeTurn[i]) < 0.001) bridgeTurn[i] = target;
+    });
     const current = view();
     for (const cell of board.cells.values()) {
-      if (cell.rots) {
-        const target = visibleAt(cell, current) ? 1 : 0;
-        cell.shown += (target - cell.shown) * 0.12;
-        if (Math.abs(target - cell.shown) < 0.001) cell.shown = target;
-      }
-      if (cell.bridge) {
-        const target = cell.axis === 'x' ? 0 : HALF_PI;
-        cell.turn += (target - cell.turn) * 0.2;
-        if (Math.abs(target - cell.turn) < 0.001) cell.turn = target;
-      }
+      if (!cell.rots) continue;
+      const target = visibleAt(cell, current) ? 1 : 0;
+      const shown = viewShown[cell.key] + (target - viewShown[cell.key]) * 0.12;
+      viewShown[cell.key] = Math.abs(target - shown) < 0.001 ? target : shown;
     }
 
     drawScene();
