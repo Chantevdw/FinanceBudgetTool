@@ -20,12 +20,13 @@
   };
   const INK = '#2b3a3a';
   const HALF_PI = Math.PI / 2;
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const DRAG_PX_PER_QUARTER = 160; // finger travel that turns the world a quarter
   const TAP_SLOP = 8; // px of movement before a press counts as a swipe
 
   // Scaled in resize(). Units are screen pixels.
-  let W = 34; // half width of a tile
-  let H = 17; // half height of a tile
+  let W = 34; // half width of a stone
+  let H = 17; // half height of a stone
   let Z = 26; // height of one step
   let originX = 0;
   let originY = 0;
@@ -38,7 +39,7 @@
   let player; // { x, y, h, key }; x/y/h are floats while walking
   let angle = 0; // drawn angle of the world
   let targetAngle = 0; // angle the world is turning to
-  let busy = false; // walking
+  let busy = false; // walking or turning a bridge
   let finished = false;
   let drag = null; // { id, x, startAngle, moved } while a finger is down
   let time = 0;
@@ -76,16 +77,9 @@
     };
   }
 
-  // Where a stone is drawn. Pieces slide from `from` to their place as `shown` goes 0 to 1.
-  function pose(cell) {
-    if (!cell.rots) return { x: cell.x, y: cell.y, h: cell.h, alpha: 1 };
-    const e = ease(cell.shown);
-    return {
-      x: cell.from[0] + (cell.x - cell.from[0]) * e,
-      y: cell.from[1] + (cell.y - cell.from[1]) * e,
-      h: cell.from[2] + (cell.h - cell.from[2]) * e,
-      alpha: 0.4 + 0.6 * e,
-    };
+  // Stones that only exist in some views fade in where they are.
+  function alphaOf(cell) {
+    return cell.rots ? cell.shown : 1;
   }
 
   function resize() {
@@ -115,6 +109,7 @@
 
     for (const cell of board.cells.values()) {
       if (cell.rots) cell.shown = visibleAt(cell, 0) ? 1 : 0;
+      if (cell.bridge) cell.turn = cell.axis === 'x' ? 0 : HALF_PI;
     }
 
     const startCell = board.cells.get(key(level.start[0], level.start[1]));
@@ -150,21 +145,45 @@
     });
   }
 
-  // Walk along real, connected stones only. Every step is a short slide.
+  // The door a step from `a` to `b` goes through, if it goes through one.
+  function doorBetween(a, b) {
+    for (const [dx, dy] of DIRS) {
+      const door = board.cells.get(key(a.x + dx, a.y + dy));
+      if (door && door.door === b.key) return door;
+    }
+    return null;
+  }
+
+  function moveTo(from, to, ms) {
+    return animate(ms, (t) => {
+      player.x = from.x + (to.x - from.x) * t;
+      player.y = from.y + (to.y - from.y) * t;
+      player.h = from.h + (to.h - from.h) * t;
+    });
+  }
+
+  function standOn(cell) {
+    player.x = cell.x;
+    player.y = cell.y;
+    player.h = cell.h;
+    player.key = cell.key;
+  }
+
   async function walk(path) {
     busy = true;
     for (let i = 1; i < path.length; i++) {
       const a = path[i - 1];
       const b = path[i];
-      await animate(240, (t) => {
-        player.x = a.x + (b.x - a.x) * t;
-        player.y = a.y + (b.y - a.y) * t;
-        player.h = a.h + (b.h - a.h) * t;
-      });
-      player.x = b.x;
-      player.y = b.y;
-      player.h = b.h;
-      player.key = b.key;
+      const door = doorBetween(a, b);
+      if (door) {
+        // Walk into the door, then step out of the other one.
+        await moveTo(a, door, 200);
+        await animate(160, () => {});
+        standOn(b);
+      } else {
+        await moveTo(a, b, 240);
+        standOn(b);
+      }
     }
     busy = false;
     if (player.key === goalKey) finish();
@@ -189,15 +208,23 @@
     targetAngle = next;
   }
 
-  // Find the visible stone whose top face is under the pointer, nearest to the viewer.
+  // Tapping a bridge turns it, unless you are standing on it.
+  async function turnBridge(cell) {
+    if (busy || finished || cell.key === player.key) return;
+    cell.axis = cell.axis === 'x' ? 'y' : 'x';
+    busy = true;
+    await animate(320, () => {});
+    busy = false;
+  }
+
+  // Find the visible stone under the pointer, nearest to the viewer.
   function cellAt(px, py) {
     let best = null;
     let bestDepth = -Infinity;
     const current = view();
     for (const cell of board.cells.values()) {
       if (!visibleAt(cell, current)) continue;
-      const q = pose(cell);
-      const p = project(q.x, q.y, q.h);
+      const p = project(cell.x, cell.y, cell.h);
       if (Math.abs(px - p.sx) / W + Math.abs(py - p.sy) / H <= 1 && p.depth > bestDepth) {
         best = cell;
         bestDepth = p.depth;
@@ -209,8 +236,15 @@
   function tapAt(x, y) {
     if (busy || finished) return;
     const cell = cellAt(x, y);
-    if (!cell || cell.key === player.key) return;
-    const path = findPath(board, player.key, cell.key, view());
+    if (!cell) return;
+    if (cell.bridge) {
+      turnBridge(cell);
+      return;
+    }
+    // Tapping a door walks through it.
+    const target = cell.door ? board.cells.get(cell.door) : cell;
+    if (target.key === player.key) return;
+    const path = findPath(board, player.key, target.key, view());
     if (path) walk(path);
   }
 
@@ -274,28 +308,68 @@
     ctx.closePath();
   }
 
-  function drawTile(q, cell) {
-    const { sx, sy } = project(q.x, q.y, q.h);
-    const dz = (q.h + 0.6) * Z; // slab goes down to just under ground
+  // Footprint of a stone in grid units, counter-clockwise. A bridge is a thin
+  // plank along its axis.
+  function footprint(cell) {
+    if (!cell.bridge) {
+      return [[cell.x - 0.5, cell.y - 0.5], [cell.x + 0.5, cell.y - 0.5],
+        [cell.x + 0.5, cell.y + 0.5], [cell.x - 0.5, cell.y + 0.5]];
+    }
+    const c = Math.cos(cell.turn);
+    const s = Math.sin(cell.turn);
+    return [[-0.5, -0.16], [0.5, -0.16], [0.5, 0.16], [-0.5, 0.16]].map(([u, v]) => [
+      cell.x + u * c - v * s,
+      cell.y + u * s + v * c,
+    ]);
+  }
 
-    ctx.globalAlpha = q.alpha;
+  // A world direction turned into view coordinates, the same turn as toView().
+  function viewDirection(nx, ny) {
+    return {
+      rx: nx * Math.cos(angle) - ny * Math.sin(angle),
+      ry: nx * Math.sin(angle) + ny * Math.cos(angle),
+    };
+  }
 
-    tilePath([[sx - W, sy], [sx, sy + H], [sx, sy + H + dz], [sx - W, sy + dz]]);
-    ctx.fillStyle = palette.left;
-    ctx.fill();
+  // Draws a slab with its top at height h and its base just under the ground.
+  // Only faces that point toward the viewer are drawn.
+  function drawBlock(corners, h, alpha) {
+    const top = corners.map(([x, y]) => project(x, y, h));
+    const base = corners.map(([x, y]) => project(x, y, -0.6));
 
-    tilePath([[sx, sy + H], [sx + W, sy], [sx + W, sy + dz], [sx, sy + H + dz]]);
-    ctx.fillStyle = palette.right;
-    ctx.fill();
+    ctx.globalAlpha = alpha;
+    for (let i = 0; i < 4; i++) {
+      const j = (i + 1) % 4;
+      // Outward normal of edge i for a counter-clockwise footprint.
+      const ex = corners[j][0] - corners[i][0];
+      const ey = corners[j][1] - corners[i][1];
+      const n = viewDirection(ey, -ex);
+      if (n.rx + n.ry <= 0) continue;
 
-    tilePath([[sx, sy - H], [sx + W, sy], [sx, sy + H], [sx - W, sy]]);
+      tilePath([
+        [top[i].sx, top[i].sy], [top[j].sx, top[j].sy],
+        [base[j].sx, base[j].sy], [base[i].sx, base[i].sy],
+      ]);
+      ctx.fillStyle = Math.abs(n.rx) >= Math.abs(n.ry) ? palette.right : palette.left;
+      ctx.fill();
+    }
+
+    tilePath(top.map((p) => [p.sx, p.sy]));
     ctx.fillStyle = palette.top;
     ctx.fill();
     ctx.strokeStyle = 'rgba(43, 58, 58, 0.08)';
     ctx.lineWidth = 1;
     ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
 
+  function drawCell(cell, alpha) {
+    drawBlock(footprint(cell), cell.h, alpha);
+
+    const { sx, sy } = project(cell.x, cell.y, cell.h);
+    ctx.globalAlpha = alpha;
     if (cell.key === goalKey) drawGoal(sx, sy);
+    if (cell.door) drawDoor(sx, sy);
     ctx.globalAlpha = 1;
   }
 
@@ -307,6 +381,55 @@
     ctx.lineWidth = 2 * (W / 34);
     ctx.globalAlpha *= 0.55 + 0.35 * pulse;
     ctx.stroke();
+  }
+
+  function drawDoor(sx, sy) {
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, W * 0.22, H * 0.22, 0, 0, Math.PI * 2);
+    ctx.fillStyle = INK;
+    ctx.globalAlpha *= 0.8;
+    ctx.fill();
+  }
+
+  // A ladder runs along the edge shared by two neighbouring stones.
+  function drawLadder(a, b) {
+    const s = W / 34;
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    const px = -(b.y - a.y) * 0.3;
+    const py = (b.x - a.x) * 0.3;
+    const hi = Math.max(a.h, b.h);
+    const lo = Math.min(a.h, b.h);
+
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.6 * s;
+    ctx.globalAlpha = 0.75;
+
+    const left = [mx + px, my + py];
+    const right = [mx - px, my - py];
+    const railTop = project(left[0], left[1], hi);
+    const railBottom = project(left[0], left[1], lo);
+    const otherTop = project(right[0], right[1], hi);
+    const otherBottom = project(right[0], right[1], lo);
+
+    ctx.beginPath();
+    ctx.moveTo(railTop.sx, railTop.sy);
+    ctx.lineTo(railBottom.sx, railBottom.sy);
+    ctx.moveTo(otherTop.sx, otherTop.sy);
+    ctx.lineTo(otherBottom.sx, otherBottom.sy);
+    ctx.stroke();
+
+    for (let i = 1; i < 5; i++) {
+      const t = i / 5;
+      const h = hi + (lo - hi) * t;
+      const l = project(left[0], left[1], h);
+      const r = project(right[0], right[1], h);
+      ctx.beginPath();
+      ctx.moveTo(l.sx, l.sy);
+      ctx.lineTo(r.sx, r.sy);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
   }
 
   function drawPlayer() {
@@ -358,14 +481,29 @@
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
 
-    // Painter's order: far stones first. The player is slotted in with its stone.
+    // Painter's order: far things first. The player is slotted in with its stone.
     const items = [];
     for (const cell of board.cells.values()) {
-      const q = pose(cell);
-      items.push({ depth: project(q.x, q.y, q.h).depth, draw: () => drawTile(q, cell) });
+      const alpha = alphaOf(cell);
+      if (alpha <= 0.01) continue;
+      items.push({
+        depth: project(cell.x, cell.y, cell.h).depth,
+        draw: () => drawCell(cell, alpha),
+      });
     }
-    items.push({ depth: project(player.x, player.y, player.h).depth + 0.5, draw: drawPlayer });
-    items.sort((a, b) => a.depth - b.depth);
+    for (const [a, b] of board.ladders) {
+      const ca = board.cells.get(a);
+      const cb = board.cells.get(b);
+      items.push({
+        depth: project((ca.x + cb.x) / 2, (ca.y + cb.y) / 2, Math.max(ca.h, cb.h)).depth,
+        draw: () => drawLadder(ca, cb),
+      });
+    }
+    items.push({
+      depth: project(player.x, player.y, player.h).depth + 0.5,
+      draw: drawPlayer,
+    });
+    items.sort((p, q) => p.depth - q.depth);
     for (const item of items) item.draw();
   }
 
@@ -376,13 +514,19 @@
     const diff = targetAngle - angle;
     angle = Math.abs(diff) < 0.0005 ? targetAngle : angle + diff * 0.14;
 
-    // Pieces slide in or out as the view changes.
+    // Stones fade in and out with the view. Bridges swing to their axis.
     const current = view();
     for (const cell of board.cells.values()) {
-      if (!cell.rots) continue;
-      const target = visibleAt(cell, current) ? 1 : 0;
-      cell.shown += (target - cell.shown) * 0.12;
-      if (Math.abs(target - cell.shown) < 0.001) cell.shown = target;
+      if (cell.rots) {
+        const target = visibleAt(cell, current) ? 1 : 0;
+        cell.shown += (target - cell.shown) * 0.12;
+        if (Math.abs(target - cell.shown) < 0.001) cell.shown = target;
+      }
+      if (cell.bridge) {
+        const target = cell.axis === 'x' ? 0 : HALF_PI;
+        cell.turn += (target - cell.turn) * 0.2;
+        if (Math.abs(target - cell.turn) < 0.001) cell.turn = target;
+      }
     }
 
     drawScene();
