@@ -30,7 +30,8 @@
     const out = [];
     for (const [dx, dy] of DIRS) {
       const next = board.cells.get(key(cell.x + dx, cell.y + dy));
-      if (next && visibleAt(next, rot) && Math.abs(next.h - cell.h) <= 1) out.push(next);
+      // Only flat ground: a step up or down is never walkable.
+      if (next && visibleAt(next, rot) && next.h === cell.h) out.push(next);
     }
     return out;
   }

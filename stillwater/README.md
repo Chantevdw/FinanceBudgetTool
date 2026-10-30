@@ -6,7 +6,7 @@ A small, calm isometric puzzle prototype inspired by *Monument Valley*. Plain HT
 
 Open `index.html` in a browser (or serve the folder with any static server). Use `?level=3` to jump to a level.
 
-- Tap a stone to walk there. You can climb or drop one step at a time.
+- Tap a stone to walk there. You can only step onto stones at the same height, so taller stones are for looking at.
 - Turn the world by swiping sideways, with the buttons, or with the `Q`/`E` or arrow keys.
 - Some stones slide into a gap only at certain angles. You walk only on real, connected stone. Reach the gold ring to finish a level.
 - You can't turn the world while a stone you're standing on would move out of place.
