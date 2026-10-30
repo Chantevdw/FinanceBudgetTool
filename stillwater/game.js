@@ -1,0 +1,335 @@
+(function () {
+  const { key, createBoard, findPath, neighbors } = Rules;
+
+  const canvas = document.getElementById('scene');
+  const ctx = canvas.getContext('2d');
+  const ui = {
+    title: document.getElementById('level-title'),
+    count: document.getElementById('level-count'),
+    hint: document.getElementById('hint'),
+    overlay: document.getElementById('win'),
+    winTitle: document.getElementById('win-title'),
+    winText: document.getElementById('win-text'),
+    next: document.getElementById('next'),
+  };
+
+  const PALETTES = {
+    sand: { top: '#f7ecd6', left: '#e0c89f', right: '#c4a77c', accent: '#c9893a' },
+    sea: { top: '#eaf6f2', left: '#aed8ca', right: '#8bbcae', accent: '#2f8f83' },
+    dusk: { top: '#f5e9f1', left: '#d2b5cd', right: '#b193ae', accent: '#8f5fa0' },
+  };
+  const INK = '#2b3a3a';
+  const HALF_PI = Math.PI / 2;
+
+  // Scaled in resize(). Units are screen pixels.
+  let W = 34; // half width of a tile
+  let H = 17; // half height of a tile
+  let Z = 26; // height of one step
+  let originX = 0;
+  let originY = 0;
+
+  let levelIndex = 0;
+  let level;
+  let board;
+  let palette;
+  let player; // { x, y, h, key } with x/y/h floats while walking
+  let angle = 0; // drawn angle of the world
+  let targetAngle = 0; // where the world is turning to
+  let busy = false; // walking or animating a finish
+  let finished = false;
+  let time = 0;
+
+  // Logical view index 0..3, derived from the target angle.
+  function view() {
+    return ((Math.round(targetAngle / HALF_PI) % 4) + 4) % 4;
+  }
+
+  // Rotate a grid position around the middle of the board by the drawn angle.
+  function toView(x, y) {
+    const c = (level.size - 1) / 2;
+    const dx = x - c;
+    const dy = y - c;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return { rx: dx * cos - dy * sin, ry: dx * sin + dy * cos };
+  }
+
+  function project(x, y, h) {
+    const v = toView(x, y);
+    return {
+      sx: originX + (v.rx - v.ry) * W,
+      sy: originY + (v.rx + v.ry) * H - h * Z,
+      depth: v.rx + v.ry,
+    };
+  }
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const n = level ? level.size : 4;
+    const s = Math.min((w * 0.9) / (n * 68), (h * 0.7) / (n * 34 + 80));
+    const scale = Math.min(2.2, Math.max(0.3, s));
+    W = 34 * scale;
+    H = 17 * scale;
+    Z = 26 * scale;
+    originX = w / 2;
+    originY = h * 0.46;
+  }
+
+  function loadLevel(index) {
+    levelIndex = index;
+    level = LEVELS[index];
+    board = createBoard(level);
+    palette = PALETTES[level.palette];
+
+    const startKey = key(level.start[0], level.start[1]);
+    const startCell = board.cells.get(startKey);
+    player = { x: startCell.x, y: startCell.y, h: startCell.h, key: startKey };
+
+    angle = 0;
+    targetAngle = 0;
+    busy = false;
+    finished = false;
+
+    ui.title.textContent = level.name;
+    ui.count.textContent = `${index + 1} / ${LEVELS.length}`;
+    ui.hint.textContent = level.hint;
+    ui.overlay.classList.remove('show');
+    resize();
+  }
+
+  function ease(t) {
+    return t * t * (3 - 2 * t);
+  }
+
+  function animate(ms, step) {
+    return new Promise((resolve) => {
+      const t0 = performance.now();
+      function frame(now) {
+        const t = Math.min(1, (now - t0) / ms);
+        step(ease(t));
+        if (t < 1) requestAnimationFrame(frame);
+        else resolve();
+      }
+      requestAnimationFrame(frame);
+    });
+  }
+
+  async function walk(path) {
+    busy = true;
+    for (let i = 1; i < path.length; i++) {
+      const a = path[i - 1];
+      const b = path[i];
+      const isLink = Math.abs(a.x - b.x) + Math.abs(a.y - b.y) > 1;
+      await animate(isLink ? 420 : 240, (t) => {
+        player.x = a.x + (b.x - a.x) * t;
+        player.y = a.y + (b.y - a.y) * t;
+        // Links jump over the gap in the air.
+        player.h = a.h + (b.h - a.h) * t + (isLink ? Math.sin(Math.PI * t) * 2.2 : 0);
+      });
+      player.x = b.x;
+      player.y = b.y;
+      player.h = b.h;
+      player.key = b.key;
+    }
+    busy = false;
+    if (player.key === key(level.goal[0], level.goal[1])) finish();
+  }
+
+  function finish() {
+    finished = true;
+    const last = levelIndex === LEVELS.length - 1;
+    ui.winTitle.textContent = last ? 'The monument is quiet' : 'Level complete';
+    ui.winText.textContent = last
+      ? 'You found every path. Thank you for walking with us.'
+      : 'Breathe. The next place is waiting.';
+    ui.next.textContent = last ? 'Play again' : 'Continue';
+    ui.overlay.classList.add('show');
+  }
+
+  function turn(direction) {
+    if (busy || finished) return;
+    targetAngle += direction * HALF_PI;
+  }
+
+  // Tap handling: find the top face under the pointer, nearest to the viewer.
+  function cellAt(px, py) {
+    let best = null;
+    let bestDepth = -Infinity;
+    for (const cell of board.cells.values()) {
+      const p = project(cell.x, cell.y, cell.h);
+      if (Math.abs(px - p.sx) / W + Math.abs(py - p.sy) / H <= 1 && p.depth > bestDepth) {
+        best = cell;
+        bestDepth = p.depth;
+      }
+    }
+    return best;
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (busy || finished) return;
+    const cell = cellAt(e.clientX, e.clientY);
+    if (!cell || cell.key === player.key) return;
+    const path = findPath(board, player.key, cell.key, view());
+    if (path) walk(path);
+  });
+
+  document.getElementById('rot-left').addEventListener('click', () => turn(-1));
+  document.getElementById('rot-right').addEventListener('click', () => turn(1));
+  document.getElementById('restart').addEventListener('click', () => loadLevel(levelIndex));
+  ui.next.addEventListener('click', () => {
+    loadLevel(levelIndex === LEVELS.length - 1 ? 0 : levelIndex + 1);
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'q' || e.key === 'ArrowLeft') turn(-1);
+    if (e.key === 'e' || e.key === 'ArrowRight') turn(1);
+    if (e.key === 'r') loadLevel(levelIndex);
+  });
+  window.addEventListener('resize', resize);
+
+  // Drawing
+
+  function tilePath(points) {
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+    ctx.closePath();
+  }
+
+  function drawTile(cell) {
+    const { sx, sy } = project(cell.x, cell.y, cell.h);
+    const dz = (cell.h + 0.6) * Z; // slab goes down to just under ground
+
+    tilePath([[sx - W, sy], [sx, sy + H], [sx, sy + H + dz], [sx - W, sy + dz]]);
+    ctx.fillStyle = palette.left;
+    ctx.fill();
+
+    tilePath([[sx, sy + H], [sx + W, sy], [sx + W, sy + dz], [sx, sy + H + dz]]);
+    ctx.fillStyle = palette.right;
+    ctx.fill();
+
+    tilePath([[sx, sy - H], [sx + W, sy], [sx, sy + H], [sx - W, sy]]);
+    ctx.fillStyle = palette.top;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(43, 58, 58, 0.08)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    if (cell.key === key(level.goal[0], level.goal[1])) drawGoal(sx, sy);
+  }
+
+  function drawGoal(sx, sy) {
+    const pulse = 0.5 + 0.5 * Math.sin(time * 2.2);
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, W * (0.42 + 0.06 * pulse), H * (0.42 + 0.06 * pulse), 0, 0, Math.PI * 2);
+    ctx.strokeStyle = palette.accent;
+    ctx.lineWidth = 2 * (W / 34);
+    ctx.globalAlpha = 0.55 + 0.35 * pulse;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Active illusion bridges: a dashed arc between two tops.
+  function drawLinks() {
+    const current = view();
+    for (const link of board.links) {
+      if (!link.rots.includes(current)) continue;
+      const a = project(link.a[0], link.a[1], board.cells.get(key(link.a[0], link.a[1])).h);
+      const b = project(link.b[0], link.b[1], board.cells.get(key(link.b[0], link.b[1])).h);
+      const midX = (a.sx + b.sx) / 2;
+      const midY = (a.sy + b.sy) / 2 - Math.hypot(b.sx - a.sx, b.sy - a.sy) * 0.22;
+
+      ctx.beginPath();
+      ctx.moveTo(a.sx, a.sy);
+      ctx.quadraticCurveTo(midX, midY, b.sx, b.sy);
+      ctx.setLineDash([5 * (W / 34), 7 * (W / 34)]);
+      ctx.lineWidth = 2.5 * (W / 34);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  function drawPlayer() {
+    const { sx, sy } = project(player.x, player.y, player.h);
+    const s = W / 34;
+    const bob = busy ? 0 : Math.sin(time * 2.4) * 0.9 * s;
+    const x = sx;
+    const y = sy + bob;
+
+    ctx.lineJoin = 'round';
+
+    // Dress
+    ctx.beginPath();
+    ctx.moveTo(x - 8 * s, y);
+    ctx.lineTo(x - 4 * s, y - 28 * s);
+    ctx.lineTo(x + 4 * s, y - 28 * s);
+    ctx.lineTo(x + 8 * s, y);
+    ctx.closePath();
+    ctx.fillStyle = '#fffdf7';
+    ctx.fill();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.4 * s;
+    ctx.stroke();
+
+    // Head
+    ctx.beginPath();
+    ctx.arc(x, y - 34 * s, 6 * s, 0, Math.PI * 2);
+    ctx.fillStyle = '#fffdf7';
+    ctx.fill();
+    ctx.stroke();
+
+    // Hat
+    ctx.beginPath();
+    ctx.moveTo(x - 8 * s, y - 37 * s);
+    ctx.lineTo(x + 14 * s, y - 52 * s);
+    ctx.lineTo(x + 5 * s, y - 34 * s);
+    ctx.closePath();
+    ctx.fillStyle = INK;
+    ctx.fill();
+  }
+
+  function drawScene() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, '#d7ece4');
+    sky.addColorStop(1, '#f6efdf');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+
+    // Painter's order: far tiles first. The player is slotted in with its tile.
+    const items = [];
+    for (const cell of board.cells.values()) {
+      items.push({ depth: project(cell.x, cell.y, cell.h).depth, draw: () => drawTile(cell) });
+    }
+    items.push({ depth: project(player.x, player.y, player.h).depth + 0.5, draw: drawPlayer });
+    items.sort((a, b) => a.depth - b.depth);
+    for (const item of items) item.draw();
+
+    drawLinks();
+  }
+
+  function frame(now) {
+    time = now / 1000;
+
+    // Ease the world toward its target angle.
+    const diff = targetAngle - angle;
+    angle = Math.abs(diff) < 0.0005 ? targetAngle : angle + diff * 0.14;
+
+    drawScene();
+    requestAnimationFrame(frame);
+  }
+
+  // ?level=3 opens a specific level, handy for jumping ahead while testing.
+  const requested = parseInt(new URLSearchParams(window.location.search).get('level'), 10);
+  loadLevel(Number.isInteger(requested) ? Math.min(LEVELS.length, Math.max(1, requested)) - 1 : 0);
+  requestAnimationFrame(frame);
+})();
