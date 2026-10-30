@@ -1,40 +1,37 @@
 // Pure movement rules for Stillwater. No DOM access, so it can be tested in Node.
 //
-// A cell is { x, y, h, key }. The world has four views (rot 0..3). Rotating
-// the view never changes the grid itself; it only switches which links are
-// active.
+// A cell is { x, y, h, key, rots, from }.
+//  - Fixed stones have no `rots` and are always there.
+//  - Pieces have `rots`: the views in which they are slid into place. Out of
+//    place they sit at `from`, and they cannot be walked on.
+// Turning the world never changes the grid, only which pieces are in place.
 
 (function (root) {
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
   const key = (x, y) => x + ',' + y;
 
+  const visibleAt = (cell, rot) => !cell.rots || cell.rots.includes(rot);
+
   function createBoard(level) {
     const cells = new Map();
-    for (const [x, y, h] of level.tiles) {
-      cells.set(key(x, y), { x, y, h, key: key(x, y) });
+    const add = (x, y, h, rots, from) => {
+      cells.set(key(x, y), { x, y, h, key: key(x, y), rots, from });
+    };
+    for (const [x, y, h] of level.tiles) add(x, y, h);
+    for (const piece of level.pieces || []) {
+      add(piece.at[0], piece.at[1], piece.at[2], piece.rots, piece.from);
     }
-    return { cells, links: level.links || [] };
+    return { cells };
   }
 
   // Cells you can step to from `cell` in view `rot`.
   function neighbors(board, cell, rot) {
     const out = [];
-
     for (const [dx, dy] of DIRS) {
       const next = board.cells.get(key(cell.x + dx, cell.y + dy));
-      if (next && Math.abs(next.h - cell.h) <= 1) out.push(next);
+      if (next && visibleAt(next, rot) && Math.abs(next.h - cell.h) <= 1) out.push(next);
     }
-
-    for (const link of board.links) {
-      if (!link.rots.includes(rot)) continue;
-      const a = key(link.a[0], link.a[1]);
-      const b = key(link.b[0], link.b[1]);
-      const other = cell.key === a ? b : cell.key === b ? a : null;
-      const next = other && board.cells.get(other);
-      if (next) out.push(next);
-    }
-
     return out;
   }
 
@@ -42,7 +39,7 @@
   function findPath(board, fromKey, toKey, rot) {
     const start = board.cells.get(fromKey);
     const goal = board.cells.get(toKey);
-    if (!start || !goal) return null;
+    if (!start || !goal || !visibleAt(goal, rot)) return null;
 
     const parent = new Map([[fromKey, null]]);
     const queue = [start];
@@ -66,8 +63,9 @@
     return null;
   }
 
-  // Can the level be finished at all? Searches (cell, view) states, where a
-  // turn moves the view one quarter either way.
+  // Can the level be finished at all? Searches (cell, view) states. A turn
+  // moves the view one quarter either way, and is only allowed if the cell
+  // you stand on stays in place.
   function solve(level) {
     const board = createBoard(level);
     const startKey = key(level.start[0], level.start[1]);
@@ -79,7 +77,10 @@
       const { cell, rot } = queue[i];
       if (cell.key === goalKey) return true;
 
-      const next = [{ cell, rot: (rot + 1) % 4 }, { cell, rot: (rot + 3) % 4 }];
+      const next = [];
+      for (const turned of [(rot + 1) % 4, (rot + 3) % 4]) {
+        if (visibleAt(cell, turned)) next.push({ cell, rot: turned });
+      }
       for (const n of neighbors(board, cell, rot)) next.push({ cell: n, rot });
 
       for (const state of next) {
@@ -93,7 +94,7 @@
     return false;
   }
 
-  const api = { key, createBoard, neighbors, findPath, solve };
+  const api = { key, visibleAt, createBoard, neighbors, findPath, solve };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;

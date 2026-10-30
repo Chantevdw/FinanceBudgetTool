@@ -1,5 +1,5 @@
 (function () {
-  const { key, createBoard, findPath, neighbors } = Rules;
+  const { key, createBoard, findPath, visibleAt } = Rules;
 
   const canvas = document.getElementById('scene');
   const ctx = canvas.getContext('2d');
@@ -20,6 +20,8 @@
   };
   const INK = '#2b3a3a';
   const HALF_PI = Math.PI / 2;
+  const DRAG_PX_PER_QUARTER = 160; // finger travel that turns the world a quarter
+  const TAP_SLOP = 8; // px of movement before a press counts as a swipe
 
   // Scaled in resize(). Units are screen pixels.
   let W = 34; // half width of a tile
@@ -32,16 +34,27 @@
   let level;
   let board;
   let palette;
-  let player; // { x, y, h, key } with x/y/h floats while walking
+  let goalKey;
+  let player; // { x, y, h, key }; x/y/h are floats while walking
   let angle = 0; // drawn angle of the world
-  let targetAngle = 0; // where the world is turning to
-  let busy = false; // walking or animating a finish
+  let targetAngle = 0; // angle the world is turning to
+  let busy = false; // walking
   let finished = false;
+  let drag = null; // { id, x, startAngle, moved } while a finger is down
   let time = 0;
 
-  // Logical view index 0..3, derived from the target angle.
+  // Logical view 0..3 for an angle.
+  function viewOf(a) {
+    return ((Math.round(a / HALF_PI) % 4) + 4) % 4;
+  }
+
   function view() {
-    return ((Math.round(targetAngle / HALF_PI) % 4) + 4) % 4;
+    return viewOf(targetAngle);
+  }
+
+  // The stone under the player must stay in place, or the player would float.
+  function canStandAt(rot) {
+    return visibleAt(board.cells.get(player.key), rot);
   }
 
   // Rotate a grid position around the middle of the board by the drawn angle.
@@ -60,6 +73,18 @@
       sx: originX + (v.rx - v.ry) * W,
       sy: originY + (v.rx + v.ry) * H - h * Z,
       depth: v.rx + v.ry,
+    };
+  }
+
+  // Where a stone is drawn. Pieces slide from `from` to their place as `shown` goes 0 to 1.
+  function pose(cell) {
+    if (!cell.rots) return { x: cell.x, y: cell.y, h: cell.h, alpha: 1 };
+    const e = ease(cell.shown);
+    return {
+      x: cell.from[0] + (cell.x - cell.from[0]) * e,
+      y: cell.from[1] + (cell.y - cell.from[1]) * e,
+      h: cell.from[2] + (cell.h - cell.from[2]) * e,
+      alpha: 0.4 + 0.6 * e,
     };
   }
 
@@ -86,15 +111,20 @@
     level = LEVELS[index];
     board = createBoard(level);
     palette = PALETTES[level.palette];
+    goalKey = key(level.goal[0], level.goal[1]);
 
-    const startKey = key(level.start[0], level.start[1]);
-    const startCell = board.cells.get(startKey);
-    player = { x: startCell.x, y: startCell.y, h: startCell.h, key: startKey };
+    for (const cell of board.cells.values()) {
+      if (cell.rots) cell.shown = visibleAt(cell, 0) ? 1 : 0;
+    }
+
+    const startCell = board.cells.get(key(level.start[0], level.start[1]));
+    player = { x: startCell.x, y: startCell.y, h: startCell.h, key: startCell.key };
 
     angle = 0;
     targetAngle = 0;
     busy = false;
     finished = false;
+    drag = null;
 
     ui.title.textContent = level.name;
     ui.count.textContent = `${index + 1} / ${LEVELS.length}`;
@@ -120,17 +150,16 @@
     });
   }
 
+  // Walk along real, connected stones only. Every step is a short slide.
   async function walk(path) {
     busy = true;
     for (let i = 1; i < path.length; i++) {
       const a = path[i - 1];
       const b = path[i];
-      const isLink = Math.abs(a.x - b.x) + Math.abs(a.y - b.y) > 1;
-      await animate(isLink ? 420 : 240, (t) => {
+      await animate(240, (t) => {
         player.x = a.x + (b.x - a.x) * t;
         player.y = a.y + (b.y - a.y) * t;
-        // Links jump over the gap in the air.
-        player.h = a.h + (b.h - a.h) * t + (isLink ? Math.sin(Math.PI * t) * 2.2 : 0);
+        player.h = a.h + (b.h - a.h) * t;
       });
       player.x = b.x;
       player.y = b.y;
@@ -138,7 +167,7 @@
       player.key = b.key;
     }
     busy = false;
-    if (player.key === key(level.goal[0], level.goal[1])) finish();
+    if (player.key === goalKey) finish();
   }
 
   function finish() {
@@ -152,17 +181,23 @@
     ui.overlay.classList.add('show');
   }
 
+  // Buttons and keys turn the world a quarter at a time.
   function turn(direction) {
     if (busy || finished) return;
-    targetAngle += direction * HALF_PI;
+    const next = targetAngle + direction * HALF_PI;
+    if (!canStandAt(viewOf(next))) return;
+    targetAngle = next;
   }
 
-  // Tap handling: find the top face under the pointer, nearest to the viewer.
+  // Find the visible stone whose top face is under the pointer, nearest to the viewer.
   function cellAt(px, py) {
     let best = null;
     let bestDepth = -Infinity;
+    const current = view();
     for (const cell of board.cells.values()) {
-      const p = project(cell.x, cell.y, cell.h);
+      if (!visibleAt(cell, current)) continue;
+      const q = pose(cell);
+      const p = project(q.x, q.y, q.h);
       if (Math.abs(px - p.sx) / W + Math.abs(py - p.sy) / H <= 1 && p.depth > bestDepth) {
         best = cell;
         bestDepth = p.depth;
@@ -171,13 +206,50 @@
     return best;
   }
 
-  canvas.addEventListener('pointerdown', (e) => {
+  function tapAt(x, y) {
     if (busy || finished) return;
-    const cell = cellAt(e.clientX, e.clientY);
+    const cell = cellAt(x, y);
     if (!cell || cell.key === player.key) return;
     const path = findPath(board, player.key, cell.key, view());
     if (path) walk(path);
+  }
+
+  // Touch and mouse: a short press is a tap, a sideways drag turns the world.
+  canvas.addEventListener('pointerdown', (e) => {
+    if (busy || finished) return;
+    canvas.setPointerCapture(e.pointerId);
+    drag = { id: e.pointerId, x: e.clientX, startAngle: targetAngle, moved: false };
   });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x;
+    if (!drag.moved && Math.abs(dx) < TAP_SLOP) return;
+    drag.moved = true;
+    const candidate = drag.startAngle + (dx / DRAG_PX_PER_QUARTER) * HALF_PI;
+    // Follow the finger, but never into a view that would drop the player.
+    if (canStandAt(viewOf(candidate))) {
+      targetAngle = candidate;
+      angle = candidate;
+    }
+  });
+
+  function endPress(e, cancelled) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const press = drag;
+    drag = null;
+
+    if (!press.moved) {
+      if (!cancelled) tapAt(e.clientX, e.clientY);
+      return;
+    }
+    // Let go: snap to the nearest quarter turn, or return if that would strand the player.
+    const snapped = Math.round(targetAngle / HALF_PI) * HALF_PI;
+    targetAngle = !cancelled && canStandAt(viewOf(snapped)) ? snapped : press.startAngle;
+  }
+
+  canvas.addEventListener('pointerup', (e) => endPress(e, false));
+  canvas.addEventListener('pointercancel', (e) => endPress(e, true));
 
   document.getElementById('rot-left').addEventListener('click', () => turn(-1));
   document.getElementById('rot-right').addEventListener('click', () => turn(1));
@@ -202,9 +274,11 @@
     ctx.closePath();
   }
 
-  function drawTile(cell) {
-    const { sx, sy } = project(cell.x, cell.y, cell.h);
-    const dz = (cell.h + 0.6) * Z; // slab goes down to just under ground
+  function drawTile(q, cell) {
+    const { sx, sy } = project(q.x, q.y, q.h);
+    const dz = (q.h + 0.6) * Z; // slab goes down to just under ground
+
+    ctx.globalAlpha = q.alpha;
 
     tilePath([[sx - W, sy], [sx, sy + H], [sx, sy + H + dz], [sx - W, sy + dz]]);
     ctx.fillStyle = palette.left;
@@ -221,7 +295,8 @@
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    if (cell.key === key(level.goal[0], level.goal[1])) drawGoal(sx, sy);
+    if (cell.key === goalKey) drawGoal(sx, sy);
+    ctx.globalAlpha = 1;
   }
 
   function drawGoal(sx, sy) {
@@ -230,30 +305,8 @@
     ctx.ellipse(sx, sy, W * (0.42 + 0.06 * pulse), H * (0.42 + 0.06 * pulse), 0, 0, Math.PI * 2);
     ctx.strokeStyle = palette.accent;
     ctx.lineWidth = 2 * (W / 34);
-    ctx.globalAlpha = 0.55 + 0.35 * pulse;
+    ctx.globalAlpha *= 0.55 + 0.35 * pulse;
     ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-
-  // Active illusion bridges: a dashed arc between two tops.
-  function drawLinks() {
-    const current = view();
-    for (const link of board.links) {
-      if (!link.rots.includes(current)) continue;
-      const a = project(link.a[0], link.a[1], board.cells.get(key(link.a[0], link.a[1])).h);
-      const b = project(link.b[0], link.b[1], board.cells.get(key(link.b[0], link.b[1])).h);
-      const midX = (a.sx + b.sx) / 2;
-      const midY = (a.sy + b.sy) / 2 - Math.hypot(b.sx - a.sx, b.sy - a.sy) * 0.22;
-
-      ctx.beginPath();
-      ctx.moveTo(a.sx, a.sy);
-      ctx.quadraticCurveTo(midX, midY, b.sx, b.sy);
-      ctx.setLineDash([5 * (W / 34), 7 * (W / 34)]);
-      ctx.lineWidth = 2.5 * (W / 34);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
   }
 
   function drawPlayer() {
@@ -305,16 +358,15 @@
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
 
-    // Painter's order: far tiles first. The player is slotted in with its tile.
+    // Painter's order: far stones first. The player is slotted in with its stone.
     const items = [];
     for (const cell of board.cells.values()) {
-      items.push({ depth: project(cell.x, cell.y, cell.h).depth, draw: () => drawTile(cell) });
+      const q = pose(cell);
+      items.push({ depth: project(q.x, q.y, q.h).depth, draw: () => drawTile(q, cell) });
     }
     items.push({ depth: project(player.x, player.y, player.h).depth + 0.5, draw: drawPlayer });
     items.sort((a, b) => a.depth - b.depth);
     for (const item of items) item.draw();
-
-    drawLinks();
   }
 
   function frame(now) {
@@ -323,6 +375,15 @@
     // Ease the world toward its target angle.
     const diff = targetAngle - angle;
     angle = Math.abs(diff) < 0.0005 ? targetAngle : angle + diff * 0.14;
+
+    // Pieces slide in or out as the view changes.
+    const current = view();
+    for (const cell of board.cells.values()) {
+      if (!cell.rots) continue;
+      const target = visibleAt(cell, current) ? 1 : 0;
+      cell.shown += (target - cell.shown) * 0.12;
+      if (Math.abs(target - cell.shown) < 0.001) cell.shown = target;
+    }
 
     drawScene();
     requestAnimationFrame(frame);
