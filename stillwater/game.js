@@ -354,13 +354,17 @@
     ctx.globalAlpha = 1;
   }
 
+  // A door is a dark opening with an accent frame, so it reads as a door at a glance.
   function drawDoor(sx, sy) {
     ctx.beginPath();
-    ctx.ellipse(sx, sy, W * 0.22, H * 0.22, 0, 0, Math.PI * 2);
+    ctx.ellipse(sx, sy, W * 0.42, H * 0.42, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = palette.accent;
+    ctx.lineWidth = 3 * (W / 34);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, W * 0.28, H * 0.28, 0, 0, Math.PI * 2);
     ctx.fillStyle = INK;
-    ctx.globalAlpha = 0.8;
     ctx.fill();
-    ctx.globalAlpha = 1;
   }
 
   // A knob sits beside its section: a hub with four short arms.
