@@ -2,9 +2,6 @@
 //
 // tiles:    [x, y, height] stones. Walking needs equal heights, so a raised
 //           stone only connects through a ladder.
-// views:    { at, rots } stones that are only there in the listed views
-//           (0 = start view, 1 = a quarter turn, 2 = half, 3 = three quarters).
-//           They fade in where they are. Nothing moves.
 // bridges:  { at, axis } movable bridges. axis 'x' carries you east-west,
 //           'y' north-south. Tap one to turn it, unless you stand on it.
 // doors:    [[x, y, h], [x, y, h]] pairs. Walking into one comes out of the other.
@@ -32,16 +29,18 @@ const LEVELS = [
   },
   {
     name: 'The Gap',
-    hint: 'Tap a bridge to turn it, then tap the stone beyond. Some stones only appear from another angle.',
+    hint: 'Tap a bridge to turn it. Tap a knob to turn an arm of the structure.',
     palette: 'sea',
     size: 4,
     start: [0, 0],
-    goal: [3, 2],
+    goal: [1, 2],
     tiles: [
-      [0, 0, 0], [1, 0, 0], [3, 0, 0], [3, 1, 0],
+      [0, 0, 0], [1, 0, 0], [3, 0, 0], [3, 1, 0], [1, 2, 0],
     ],
     bridges: [{ at: [2, 0, 0], axis: 'y' }],
-    views: [{ at: [3, 2, 0], rots: [1] }],
+    sections: [
+      { pivot: [3, 2], cells: [[3, 2, 0], [3, 3, 0]], knob: [4, 2, 0] },
+    ],
   },
   {
     name: 'Mystery Door',

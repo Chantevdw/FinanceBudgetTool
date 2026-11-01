@@ -1,7 +1,10 @@
 // Pure movement rules for Stillwater. No DOM access, so it can be tested in Node.
 //
+// The space never turns. Only parts of the structure do:
+//  - sections turn a quarter about a pivot each time their knob is tapped
+//  - bridges turn between an x axis and a y axis when tapped
+//
 // A cell is { x, y, h, key, ... } with optional fields:
-//  - rots:    views in which the stone is there at all (otherwise it is absent)
 //  - bridge:  true for a movable bridge, with axis 'x' or 'y'. It only carries
 //             you along that axis.
 //  - door:    key of the paired door. Walking into a door puts you on its partner.
@@ -14,8 +17,6 @@
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
   const key = (x, y) => x + ',' + y;
-
-  const visibleAt = (cell, rot) => !cell.rots || cell.rots.includes(rot);
 
   const passable = (cell, dx, dy) => !cell.bridge || (cell.axis === 'x' ? dy === 0 : dx === 0);
 
@@ -41,7 +42,6 @@
     };
 
     for (const at of level.tiles) add(at, {});
-    for (const view of level.views || []) add(view.at, { rots: view.rots });
 
     (level.sections || []).forEach((section, i) => {
       for (const [x, y, h] of section.cells) {
@@ -62,19 +62,19 @@
     return { cells, bridges, ladders, world: { sections: sections.slice(), axes } };
   }
 
-  // Cells you can step to from `cell` in view `rot`.
-  function neighbors(board, cell, rot) {
+  // Cells you can step to from `cell`.
+  function neighbors(board, cell) {
     const out = [];
 
     for (const [dx, dy] of DIRS) {
       const next = board.cells.get(key(cell.x + dx, cell.y + dy));
-      if (!next || !visibleAt(next, rot) || next.h !== cell.h) continue;
+      if (!next || next.h !== cell.h) continue;
       if (!passable(cell, dx, dy) || !passable(next, dx, dy)) continue;
 
       if (next.door) {
         // Walking into a door comes out at its partner.
         const landing = board.cells.get(next.door);
-        if (landing && landing !== cell && visibleAt(landing, rot)) out.push(landing);
+        if (landing && landing !== cell) out.push(landing);
         continue;
       }
       out.push(next);
@@ -83,17 +83,17 @@
     for (const [a, b] of board.ladders) {
       const other = cell.key === a ? b : cell.key === b ? a : null;
       const next = other && board.cells.get(other);
-      if (next && visibleAt(next, rot)) out.push(next);
+      if (next) out.push(next);
     }
 
     return out;
   }
 
-  // Shortest walk from one cell to another in view `rot`, or null if none.
-  function findPath(board, fromKey, toKey, rot) {
+  // Shortest walk from one cell to another, or null if none.
+  function findPath(board, fromKey, toKey) {
     const start = board.cells.get(fromKey);
     const goal = board.cells.get(toKey);
-    if (!start || !goal || !visibleAt(goal, rot)) return null;
+    if (!start || !goal) return null;
 
     const parent = new Map([[fromKey, null]]);
     const queue = [start];
@@ -107,7 +107,7 @@
         }
         return path;
       }
-      for (const next of neighbors(board, cell, rot)) {
+      for (const next of neighbors(board, cell)) {
         if (!parent.has(next.key)) {
           parent.set(next.key, cell.key);
           queue.push(next);
@@ -117,9 +117,8 @@
     return null;
   }
 
-  // Can the level be finished at all? Searches over the cell you stand on, the
-  // view, every bridge's axis and every section's turn. Actions:
-  //  - turn the view a quarter (only if the stone under you stays in place)
+  // Can the level be finished at all? Searches over the cell you stand on and
+  // every bridge's axis and section's turn. Actions:
   //  - walk to a neighbour
   //  - tap a bridge to turn it (not while standing on it)
   //  - tap a knob to turn its section a quarter (not while standing on it)
@@ -128,9 +127,9 @@
     const startKey = key(level.start[0], level.start[1]);
     const goalKey = key(level.goal[0], level.goal[1]);
     const initial = createBoard(level).world;
-    const id = (s) => [s.cellKey, s.rot, s.sections.join(''), s.axes].join('|');
+    const id = (s) => [s.cellKey, s.sections.join(''), s.axes].join('|');
 
-    const queue = [{ cellKey: startKey, rot: 0, sections: initial.sections, axes: initial.axes }];
+    const queue = [{ cellKey: startKey, sections: initial.sections, axes: initial.axes }];
     const seen = new Set([id(queue[0])]);
 
     for (let i = 0; i < queue.length; i++) {
@@ -141,10 +140,7 @@
       const cell = board.cells.get(state.cellKey);
       const next = [];
 
-      for (const turned of [(state.rot + 1) % 4, (state.rot + 3) % 4]) {
-        if (visibleAt(cell, turned)) next.push({ ...state, rot: turned });
-      }
-      for (const n of neighbors(board, cell, state.rot)) {
+      for (const n of neighbors(board, cell)) {
         next.push({ ...state, cellKey: n.key });
       }
       board.bridges.forEach((b) => {
@@ -170,7 +166,7 @@
     return false;
   }
 
-  const api = { key, visibleAt, turnCell, createBoard, neighbors, findPath, solve };
+  const api = { key, turnCell, createBoard, neighbors, findPath, solve };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
