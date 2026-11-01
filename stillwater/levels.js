@@ -1,14 +1,17 @@
 // Level data for Stillwater.
 //
-// tiles:    [x, y, height] stones. Walking needs equal heights, so a raised
-//           stone only connects through a ladder.
-// bridges:  { at, axis } movable bridges. axis 'x' carries you east-west,
-//           'y' north-south. Tap one to turn it, unless you stand on it.
-// doors:    [[x, y, h], [x, y, h]] pairs. Walking into one comes out of the other.
-// ladders:  [[x, y], [x, y]] adjacent cells whose heights differ by one.
+// The camera never moves. So every route has to be visible from the start:
+// tall stones may not hide a stone behind them (test-levels.js checks this).
+// Raised ground goes at the back of a level, where it hides nothing.
+//
+// tiles:    [x, y, height] stones.
 // sections: { pivot, cells, knob } stones that turn a quarter about `pivot`
 //           each time the knob at `knob` is tapped. Ida can't stand on a
 //           section while it turns. `cells` are listed in their starting place.
+// bridges:  { at, axis } 'x' carries you east-west, 'y' north-south. Tap one to
+//           turn it, unless you stand on it.
+// doors:    [[x, y, h], [x, y, h]] pairs. Walking into one comes out of the other.
+// ladders:  [[x, y], [x, y]] adjacent cells whose heights differ by one.
 // palette:  one of the palettes defined in game.js.
 
 const LEVELS = [
@@ -21,7 +24,6 @@ const LEVELS = [
     goal: [1, 3],
     tiles: [
       [0, 0, 0], [1, 3, 0],
-      [2, 0, 2], // a monument stone you can see but not reach
     ],
     sections: [
       { pivot: [1, 1], cells: [[0, 1, 0], [1, 1, 0], [2, 1, 0]], knob: [3, 1, 0] },
@@ -44,35 +46,32 @@ const LEVELS = [
   },
   {
     name: 'Mystery Door',
-    hint: 'Walk into a door and you come out of the other one. Tap a bridge to turn it.',
+    hint: 'Walk into a door and you come out of the one it is paired with.',
     palette: 'dusk',
     size: 5,
     start: [0, 0],
     goal: [2, 4],
     tiles: [
-      [0, 0, 0], [0, 1, 0], [0, 2, 0],
-      [4, 1, 0], [4, 2, 0],
-      [2, 2, 0], [2, 3, 0], [2, 4, 0],
-      [1, 4, 2], // a tower you can't reach
+      [0, 0, 0], [1, 0, 0], [2, 0, 0],
+      [0, 4, 0], [2, 4, 0],
     ],
-    doors: [[[0, 3, 0], [4, 0, 0]]],
-    bridges: [{ at: [3, 2, 0], axis: 'y' }],
+    doors: [[[3, 0, 0], [0, 4, 0]]],
+    bridges: [{ at: [1, 4, 0], axis: 'y' }],
   },
   {
     name: 'The Monument',
-    hint: 'Climb the ladders and turn the bridge to cross.',
+    hint: 'Climb the ladder, then turn the bridge to cross to the goal.',
     palette: 'sand',
     size: 5,
-    start: [0, 0],
-    goal: [0, 4],
+    start: [0, 4],
+    goal: [0, 0],
     tiles: [
-      [0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0], [4, 0, 0],
-      [4, 1, 1], [3, 1, 1], [2, 1, 1], [0, 1, 1],
-      [0, 2, 0], [0, 3, 0], [0, 4, 0],
-      [2, 2, 3], // the monument itself, too high to reach
+      [0, 4, 0], [1, 4, 0], [2, 4, 0], [3, 4, 0], [4, 4, 0],
+      [0, 3, 1], [1, 3, 1], [2, 3, 1],
+      [0, 1, 1], [0, 0, 1],
     ],
-    bridges: [{ at: [1, 1, 1], axis: 'y' }],
-    ladders: [[[4, 0], [4, 1]], [[0, 1], [0, 2]]],
+    bridges: [{ at: [0, 2, 1], axis: 'x' }],
+    ladders: [[[2, 4], [2, 3]]],
   },
 ];
 
